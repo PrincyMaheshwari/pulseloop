@@ -37,6 +37,8 @@ class ContentItem(BaseModel):
     blob_uri: Optional[str] = None  # Azure Blob Storage URI for raw content/transcript
     transcript: Optional[str] = None  # For videos/podcasts
     transcript_segments: Optional[List[Dict]] = None  # Timestamped transcript segments
+    transcript_blob_uri: Optional[str] = None  # Blob URI for transcript text
+    transcript_segments_blob_uri: Optional[str] = None  # Blob URI for transcript segments JSON
     summary: Optional[str] = None  # AI-generated summary
     summary_blob_uri: Optional[str] = None  # Blob URI for cached summary
     animated_summary: Optional[Dict] = None  # Storyboard and audio URL

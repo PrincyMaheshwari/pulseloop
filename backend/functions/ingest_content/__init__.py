@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -67,12 +68,11 @@ def ingest_rss_source(source: dict, db):
                 article_text = response.text
                 
                 # Save to blob storage
-                blob_name = f"article_{datetime.utcnow().timestamp()}.html"
-                blob_uri = storage_service.upload_blob(
-                    "articles-raw",
-                    blob_name,
-                    article_text.encode("utf-8"),
-                    "text/html"
+                blob_uri = storage_service.upload_text(
+                    settings.STORAGE_CONTAINER_ARTICLES,
+                    f"article_{content_service.slugify(entry.title)}",
+                    article_text,
+                    content_type="text/html",
                 )
             except Exception as e:
                 logger.warning(f"Could not download article {entry.link}: {e}")
@@ -153,6 +153,26 @@ def ingest_youtube_source(source: dict, db):
                     logger.warning(f"Could not get captions for video {video_id}: {e}")
             
             # Create content item
+            slug_base = content_service.slugify(snippet["title"]) or video_id
+
+            transcript_blob_uri = None
+            transcript_segments_blob_uri = None
+
+            if transcript:
+                transcript_blob_uri = storage_service.upload_text(
+                    settings.STORAGE_CONTAINER_TRANSCRIPTS,
+                    f"{slug_base}_{video_id}_transcript",
+                    transcript,
+                )
+
+            if transcript_segments:
+                segments_json = json.dumps(transcript_segments).encode("utf-8")
+                transcript_segments_blob_uri = storage_service.upload_json(
+                    settings.STORAGE_CONTAINER_TRANSCRIPTS,
+                    f"{slug_base}_{video_id}_segments",
+                    segments_json,
+                )
+
             content_data = {
                 "title": snippet["title"],
                 "type": "video",
@@ -163,6 +183,8 @@ def ingest_youtube_source(source: dict, db):
                 "role_tags": role_tags,
                 "transcript": transcript,
                 "transcript_segments": transcript_segments or None,
+                "transcript_blob_uri": transcript_blob_uri,
+                "transcript_segments_blob_uri": transcript_segments_blob_uri,
                 "metadata": {
                     "video_id": video_id,
                     "channel_id": channel_id,
@@ -214,6 +236,26 @@ def ingest_podcast_source(source: dict, db):
                 logger.warning(f"Could not download/transcribe podcast audio: {e}")
             
             # Create content item
+            slug_base = content_service.slugify(entry.title) or entry.id if hasattr(entry, "id") else "podcast"
+
+            transcript_blob_uri = None
+            transcript_segments_blob_uri = None
+
+            if transcript:
+                transcript_blob_uri = storage_service.upload_text(
+                    settings.STORAGE_CONTAINER_TRANSCRIPTS,
+                    f"{slug_base}_transcript",
+                    transcript,
+                )
+
+            if transcript_segments:
+                segments_json = json.dumps(transcript_segments).encode("utf-8")
+                transcript_segments_blob_uri = storage_service.upload_json(
+                    settings.STORAGE_CONTAINER_TRANSCRIPTS,
+                    f"{slug_base}_segments",
+                    segments_json,
+                )
+
             content_data = {
                 "title": entry.title,
                 "type": "podcast",
@@ -224,6 +266,8 @@ def ingest_podcast_source(source: dict, db):
                 "role_tags": role_tags,
                 "transcript": transcript,
                 "transcript_segments": transcript_segments or None,
+                "transcript_blob_uri": transcript_blob_uri,
+                "transcript_segments_blob_uri": transcript_segments_blob_uri,
                 "metadata": {
                     "audio_url": audio_url
                 },

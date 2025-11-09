@@ -13,6 +13,14 @@ class ContentService:
     def __init__(self):
         self.db = get_database()
     
+    @staticmethod
+    def slugify(value: str) -> str:
+        import re
+        value = value or "content"
+        value = value.lower()
+        value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
+        return value or "content"
+    
     def get_user_feed(self, user_id: str, limit: int = 20) -> List[dict]:
         """Get personalized feed for user based on their role"""
         try:

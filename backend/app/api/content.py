@@ -5,6 +5,7 @@ from app.services.content_service import content_service
 from app.services.ai_service import ai_service
 from app.services.elevenlabs_service import elevenlabs_service
 from app.services.storage_service import storage_service
+from app.core.config import settings
 from app.core.database import get_database
 from bson import ObjectId
 import json
@@ -46,12 +47,10 @@ async def get_animated_summary(content_id: str):
         audio_bytes = elevenlabs_service.generate_narration_audio(storyboard)
         
         # Upload audio to blob storage
-        blob_name = f"summary_{content_id}.mp3"
-        audio_url = storage_service.upload_blob(
-            "audio-summaries",
-            blob_name,
+        audio_url = storage_service.upload_audio(
+            settings.STORAGE_CONTAINER_SUMMARIES,
+            f"summary_{content_id}",
             audio_bytes,
-            "audio/mpeg"
         )
         
         # Save animated summary
@@ -63,7 +62,12 @@ async def get_animated_summary(content_id: str):
         # Update content item
         db.content_items.update_one(
             {"_id": ObjectId(content_id)},
-            {"$set": {"animated_summary": animated_summary}}
+            {
+                "$set": {
+                    "animated_summary": animated_summary,
+                    "summary_blob_uri": audio_url,
+                }
+            }
         )
         
         return animated_summary

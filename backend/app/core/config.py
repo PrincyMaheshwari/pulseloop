@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Azure Storage
     AZURE_STORAGE_CONNECTION_STRING: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
     AZURE_STORAGE_ACCOUNT_NAME: str = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "")
+    STORAGE_CONTAINER_ARTICLES: str = os.getenv("STORAGE_CONTAINER_ARTICLES", "articles-raw")
+    STORAGE_CONTAINER_TRANSCRIPTS: str = os.getenv("STORAGE_CONTAINER_TRANSCRIPTS", "transcripts")
+    STORAGE_CONTAINER_SUMMARIES: str = os.getenv("STORAGE_CONTAINER_SUMMARIES", "audio-summaries")
     
     # Azure Key Vault
     AZURE_KEY_VAULT_URI: str = os.getenv("AZURE_KEY_VAULT_URI", "")
