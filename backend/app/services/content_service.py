@@ -75,12 +75,14 @@ class ContentService:
         """Create a new content item"""
         try:
             # Generate summary if not provided
+            transcript_segments = content_data.get("transcript_segments") or []
             if not content_data.get("summary"):
                 content_text = content_data.get("transcript") or content_data.get("description", "")
                 if content_text:
                     content_data["summary"] = ai_service.generate_summary(
                         content_text,
-                        content_data.get("type", "article")
+                        content_data.get("type", "article"),
+                        transcript_segments=transcript_segments,
                     )
             
             # Generate tags if not provided

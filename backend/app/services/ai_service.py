@@ -15,16 +15,30 @@ class AIService:
         )
         self.model = settings.deepseek_model
     
-    def generate_summary(self, content: str, content_type: str = "article") -> str:
+    def generate_summary(
+        self,
+        content: str,
+        content_type: str = "article",
+        transcript_segments: Optional[List[Dict]] = None,
+    ) -> str:
         """Generate a concise summary of the content"""
         try:
-            prompt = f"""Generate a concise summary (2-3 paragraphs) of the following {content_type} content.
-            
-Content:
-{content[:4000]}
+            trimmed_content = content[:8000] if content else ""
 
-Summary:"""
-            
+            if content_type in ("video", "podcast"):
+                prompt = (
+                    "You are summarizing an audio/video transcript that teaches industry news. "
+                    "Write 2-3 short paragraphs highlighting the most important takeaways, "
+                    "key people or companies mentioned, and recommended actions for the listener. "
+                    "Avoid referencing timestamps directly in the summary.\n\n"
+                    f"Transcript excerpt:\n{trimmed_content}\n\nSummary:"
+                )
+            else:
+                prompt = (
+                    "Generate a concise summary (2-3 paragraphs) of the following article content.\n\n"
+                    f"Content:\n{trimmed_content}\n\nSummary:"
+                )
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -65,37 +79,39 @@ Tags (comma-separated):"""
             logger.error(f"Error generating tags: {e}")
             return []
     
-    def generate_quiz(self, content: str, summary: str, content_type: str = "article") -> List[Dict]:
+    def generate_quiz(
+        self,
+        content: str,
+        summary: str,
+        content_type: str = "article",
+        transcript_segments: Optional[List[Dict]] = None,
+    ) -> List[Dict]:
         """Generate 5 multiple-choice questions based on the content"""
         try:
-            prompt = f"""Generate 5 multiple-choice questions based on the following content summary.
-            
-Summary: {summary}
+            trimmed_content = content[:10000] if content else ""
 
-For each question, provide:
-- question: The question text
-- options: List of 4 answer options
-- correct_answer: Index (0-3) of the correct answer
-- explanation: Brief explanation of why this answer is correct
+            if content_type in ("video", "podcast"):
+                formatted_segments = self._format_segments_for_prompt(transcript_segments)
+                prompt = (
+                    "You are creating a quiz for learners who watched or listened to the following transcript excerpts. "
+                    "Generate 5 multiple-choice questions that test understanding of the key ideas. "
+                    "Questions should be specific enough that the correct answer can be found in the transcript. "
+                    "If possible, note in the explanation which time range covers the answer.\n\n"
+                    f"Transcript excerpts with timestamps:\n{formatted_segments}\n\n"
+                    f"Transcript excerpt:\n{trimmed_content}\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    "Return JSON with a 'questions' array. Each question must include 'question', 'options' (4 strings), "
+                    "'correct_answer' (0-3), and 'explanation'."
+                )
+            else:
+                prompt = (
+                    "Generate 5 multiple-choice questions based on the article summary below. "
+                    "Each question must have 4 answer options, identify the correct option by index (0-3), "
+                    "and include a short explanation citing the key idea.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Article excerpt:\n{trimmed_content}\n"
+                )
 
-Return the response as a JSON object with a "questions" array. Each question should have:
-- question: string
-- options: array of 4 strings
-- correct_answer: integer (0-3)
-- explanation: string
-
-Example format:
-{{
-  "questions": [
-    {{
-      "question": "...",
-      "options": ["option1", "option2", "option3", "option4"],
-      "correct_answer": 0,
-      "explanation": "..."
-    }}
-  ]
-}}"""
-            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -134,36 +150,42 @@ Example format:
             raise
     
     def generate_review_hints(
-        self, 
-        summary: str, 
+        self,
+        summary: str,
         transcript: Optional[str],
         content_type: str,
         wrong_answers: List[int],
-        original_quiz: List[Dict]
+        original_quiz: List[Dict],
+        transcript_segments: Optional[List[Dict]] = None,
     ) -> Dict:
         """Generate review hints (paragraph indices or timestamps) for missed concepts"""
         try:
-            prompt = f"""The user answered {len(wrong_answers)} questions incorrectly in a quiz about this content.
-            
-Summary: {summary}
+            if content_type in ("video", "podcast") and transcript_segments:
+                formatted_segments = self._format_segments_for_prompt(transcript_segments, limit=40, max_chars=180)
+                prompt = (
+                    f"The learner missed {len(wrong_answers)} questions in a quiz about this {content_type}. "
+                    "Identify the most relevant transcript segments to review. "
+                    "Return JSON with a 'timestamps' array containing strings formatted as 'MM:SS-MM:SS', "
+                    "and a 'concepts' array summarising what they missed. "
+                    "Use the provided transcript segments with timestamps as reference.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Questions (with correct answers/explanations):\n{json.dumps(original_quiz, indent=2)}\n\n"
+                    f"Transcript segments:\n{formatted_segments}\n"
+                )
+            else:
+                prompt = (
+                    f"The user answered {len(wrong_answers)} questions incorrectly in a quiz about this article.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Questions (with correct answers/explanations):\n{json.dumps(original_quiz, indent=2)}\n\n"
+                    "Return JSON with:\n"
+                    "{\n"
+                    '  "articleHighlights": [{"paragraphIndex": number}, ...],\n'
+                    '  "timestamps": [],\n'
+                    '  "concepts": ["concept1", "concept2"]\n'
+                    "}\n"
+                    "Paragraph indices should be zero-based."
+                )
 
-Content Type: {content_type}
-
-Wrong Answer Indices: {wrong_answers}
-
-Original Quiz Questions: {json.dumps(original_quiz, indent=2)}
-
-Based on the concepts they missed, generate:
-1. For articles: List of paragraph indices (0-based) they should re-read
-2. For videos/podcasts: List of timestamp ranges (format: "MM:SS-MM:SS") they should re-watch/re-listen
-
-Return JSON with:
-{{
-  "articleHighlights": [{{"paragraphIndex": 2}}, {{"paragraphIndex": 4}}],  // For articles
-  "timestamps": ["00:45-01:20", "03:10-03:40"],  // For videos/podcasts
-  "concepts": ["concept1", "concept2"]  // Key concepts they missed
-}}"""
-            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -186,35 +208,31 @@ Return JSON with:
         transcript: Optional[str],
         content_type: str,
         wrong_concepts: List[str],
-        original_quiz: List[Dict]
+        original_quiz: List[Dict],
+        transcript_segments: Optional[List[Dict]] = None,
     ) -> List[Dict]:
         """Generate a new quiz focusing on the concepts the user missed"""
         try:
-            prompt = f"""Generate 5 new multiple-choice questions focusing on the concepts the user missed.
-            
-Summary: {summary}
+            trimmed_transcript = transcript[:9000] if transcript else ""
 
-Missed Concepts: {', '.join(wrong_concepts)}
-
-The user struggled with these concepts from the original quiz. Create NEW questions that test understanding of these specific concepts.
-
-Return a JSON object with a "questions" array. Each question should have:
-- question: string
-- options: array of 4 strings
-- correct_answer: integer (0-3)
-- explanation: string
-
-Example format:
-{{
-  "questions": [
-    {{
-      "question": "...",
-      "options": ["option1", "option2", "option3", "option4"],
-      "correct_answer": 0,
-      "explanation": "..."
-    }}
-  ]
-}}"""
+            if content_type in ("video", "podcast") and transcript_segments:
+                formatted_segments = self._format_segments_for_prompt(transcript_segments, limit=40, max_chars=180)
+                prompt = (
+                    "Generate 5 NEW multiple-choice questions to help the learner revisit the missed concepts in this "
+                    f"{content_type} transcript. Focus on the listed concepts and ensure each question can be answered "
+                    "using the transcript excerpts provided. Include the correct answer index and a short explanation.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Concepts to reinforce: {', '.join(wrong_concepts) if wrong_concepts else 'Refer to transcript'}\n\n"
+                    f"Transcript excerpts with timestamps:\n{formatted_segments}\n\n"
+                    f"Transcript excerpt:\n{trimmed_transcript}\n"
+                )
+            else:
+                prompt = (
+                    "Generate 5 new multiple-choice questions focusing on the concepts the learner missed.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Concepts to reinforce: {', '.join(wrong_concepts) if wrong_concepts else 'Refer to article'}\n\n"
+                    f"Article excerpt:\n{trimmed_transcript}\n"
+                )
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -345,6 +363,40 @@ Return a JSON object with scores for each role:
         except Exception as e:
             logger.error(f"Error calculating priority score: {e}")
             return 0.5
+
+    @staticmethod
+    def _format_segments_for_prompt(
+        segments: Optional[List[Dict]],
+        limit: int = 25,
+        max_chars: int = 200,
+    ) -> str:
+        if not segments:
+            return "No timestamped transcript segments available."
+
+        formatted_lines = []
+        for segment in segments[:limit]:
+            text = segment.get("text", "")
+            if not text:
+                continue
+            trimmed_text = text.replace("\n", " ").strip()
+            if len(trimmed_text) > max_chars:
+                trimmed_text = trimmed_text[: max_chars - 3].rstrip() + "..."
+            start_ms = segment.get("start_ms", 0)
+            end_ms = segment.get("end_ms", start_ms)
+            formatted_lines.append(
+                f"- [{AIService._format_time_range(start_ms, end_ms)}] {trimmed_text}"
+            )
+
+        return "\n".join(formatted_lines) if formatted_lines else "No timestamped transcript segments available."
+
+    @staticmethod
+    def _format_time_range(start_ms: int, end_ms: int) -> str:
+        def _fmt(ms: int) -> str:
+            minutes = ms // 60000
+            seconds = (ms % 60000) // 1000
+            return f"{minutes:02d}:{seconds:02d}"
+
+        return f"{_fmt(start_ms)}-{_fmt(end_ms)}"
 
 # Singleton instance
 ai_service = AIService()

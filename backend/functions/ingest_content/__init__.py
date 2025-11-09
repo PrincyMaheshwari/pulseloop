@@ -1,21 +1,25 @@
 import logging
-import sys
 import os
+import sys
+import tempfile
+from datetime import datetime
+from typing import Dict, List, Optional
+
 import azure.functions as func
+import feedparser
+import requests
+from googleapiclient.discovery import build
+from yt_dlp import YoutubeDL
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import feedparser
-import requests
-from googleapiclient.discovery import build
-from datetime import datetime
-from app.core.database import get_database
 from app.core.config import settings
+from app.core.database import get_database
+from app.services.ai_service import ai_service
 from app.services.content_service import content_service
 from app.services.speech_service import speech_service
 from app.services.storage_service import storage_service
-from app.services.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -129,58 +133,24 @@ def ingest_youtube_source(source: dict, db):
             video_response = video_request.execute()
             video_details = video_response.get("items", [])[0] if video_response.get("items") else None
             
-            # Try to get captions/transcript
             transcript = None
+            transcript_segments: List[Dict] = []
+
+            # Prefer Azure Speech transcription
             try:
-                # Get available captions
-                caption_request = youtube.captions().list(
-                    part="snippet",
-                    videoId=video_id
-                )
-                caption_response = caption_request.execute()
-                
-                # Try to download English captions
-                for caption in caption_response.get("items", []):
-                    if caption["snippet"]["language"] in ["en", "en-US", "en-GB"]:
-                        try:
-                            from googleapiclient.http import MediaIoBaseDownload
-                            import io
-                            
-                            caption_download = youtube.captions().download(
-                                id=caption["id"],
-                                tfmt="srt"  # or "vtt"
-                            )
-                            
-                            # Download caption content
-                            caption_content = caption_download.execute()
-                            if isinstance(caption_content, bytes):
-                                caption_content = caption_content.decode('utf-8')
-                            
-                            # Extract text from SRT format (simple extraction)
-                            import re
-                            # Remove SRT timing and index lines, keep text
-                            lines = caption_content.split('\n')
-                            text_lines = []
-                            for line in lines:
-                                # Skip index numbers and timestamps
-                                if not re.match(r'^\d+$', line.strip()) and not re.match(r'^\d{2}:\d{2}:\d{2}', line.strip()) and line.strip():
-                                    text_lines.append(line.strip())
-                            transcript = ' '.join(text_lines)
-                            break
-                        except Exception as e:
-                            logger.warning(f"Could not download caption {caption['id']}: {e}")
-                            continue
-                
-                # If no captions found, try to transcribe using Azure Speech-to-Text
-                if not transcript:
-                    try:
-                        # Download video audio (requires youtube-dl or similar)
-                        # For now, we'll skip this and rely on captions
-                        logger.info(f"No captions available for video {video_id}, skipping transcript")
-                    except Exception as e:
-                        logger.warning(f"Could not generate transcript for video {video_id}: {e}")
+                transcription_result = _transcribe_youtube_audio(video_url)
+                if transcription_result:
+                    transcript = transcription_result.get("full_text")
+                    transcript_segments = transcription_result.get("segments", [])
             except Exception as e:
-                logger.warning(f"Could not get captions for video {video_id}: {e}")
+                logger.warning(f"Azure Speech transcription failed for video {video_id}: {e}")
+
+            # Fallback to YouTube captions if speech transcription is unavailable
+            if not transcript:
+                try:
+                    transcript = _download_captions_as_text(youtube, video_id)
+                except Exception as e:
+                    logger.warning(f"Could not get captions for video {video_id}: {e}")
             
             # Create content item
             content_data = {
@@ -192,6 +162,7 @@ def ingest_youtube_source(source: dict, db):
                 "published_at": datetime.fromisoformat(snippet["publishedAt"].replace("Z", "+00:00")),
                 "role_tags": role_tags,
                 "transcript": transcript,
+                "transcript_segments": transcript_segments or None,
                 "metadata": {
                     "video_id": video_id,
                     "channel_id": channel_id,
@@ -233,35 +204,14 @@ def ingest_podcast_source(source: dict, db):
             
             # Download and transcribe audio
             transcript = None
+            transcript_segments: List[Dict] = []
             try:
-                import requests
-                import tempfile
-                import os
-                
-                # Download audio file
-                logger.info(f"Downloading podcast audio from {audio_url}")
-                audio_response = requests.get(audio_url, timeout=60, stream=True)
-                audio_response.raise_for_status()
-                
-                # Save to temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
-                    for chunk in audio_response.iter_content(chunk_size=8192):
-                        tmp_file.write(chunk)
-                    tmp_path = tmp_file.name
-                
-                try:
-                    # Transcribe using Azure Speech-to-Text
-                    transcript = speech_service.transcribe_audio(tmp_path)
-                    logger.info(f"Generated transcript for podcast: {entry.title}")
-                except Exception as e:
-                    logger.warning(f"Could not transcribe podcast audio: {e}")
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(tmp_path):
-                        os.unlink(tmp_path)
+                transcription_result = speech_service.transcribe_from_url(audio_url)
+                transcript = transcription_result.get("full_text")
+                transcript_segments = transcription_result.get("segments", [])
+                logger.info(f"Generated transcript for podcast: {entry.title}")
             except Exception as e:
                 logger.warning(f"Could not download/transcribe podcast audio: {e}")
-            # transcript = speech_service.transcribe_audio(audio_url)
             
             # Create content item
             content_data = {
@@ -273,6 +223,7 @@ def ingest_podcast_source(source: dict, db):
                 "published_at": datetime(*entry.published_parsed[:6]) if hasattr(entry, "published_parsed") else datetime.utcnow(),
                 "role_tags": role_tags,
                 "transcript": transcript,
+                "transcript_segments": transcript_segments or None,
                 "metadata": {
                     "audio_url": audio_url
                 },
@@ -283,4 +234,89 @@ def ingest_podcast_source(source: dict, db):
             logger.info(f"Created podcast content item: {content_id}")
     except Exception as e:
         logger.error(f"Error ingesting podcast source: {e}")
+
+
+def _download_captions_as_text(youtube, video_id: str) -> Optional[str]:
+    """
+    Download English captions for a YouTube video and return plain text (no timing).
+    """
+    try:
+        caption_request = youtube.captions().list(
+            part="snippet",
+            videoId=video_id
+        )
+        caption_response = caption_request.execute()
+
+        for caption in caption_response.get("items", []):
+            language = caption["snippet"].get("language", "")
+            if language.lower().startswith("en"):
+                from googleapiclient.http import MediaIoBaseDownload
+                import io
+
+                caption_download = youtube.captions().download(id=caption["id"], tfmt="srt")
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, caption_download)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                caption_content = fh.getvalue().decode("utf-8")
+
+                lines: List[str] = []
+                for line in caption_content.splitlines():
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    if stripped.isdigit() or ("-->" in stripped and stripped.count(":") >= 2):
+                        continue
+                    lines.append(stripped)
+                if lines:
+                    return " ".join(lines)
+    except Exception as exc:
+        logger.debug(f"Failed to download captions for {video_id}: {exc}")
+    return None
+
+
+def _transcribe_youtube_audio(video_url: str) -> Optional[Dict[str, List]]:
+    """
+    Download the audio track for a YouTube video and run Azure Speech transcription.
+    Returns the transcription payload or None on failure.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        outtmpl = os.path.join(tmp_dir, "%(id)s.%(ext)s")
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "ignoreerrors": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
+        }
+
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=True)
+                if not info:
+                    raise RuntimeError("Unable to retrieve video information.")
+
+                base_filename = ydl.prepare_filename(info)
+                possible_paths = [
+                    base_filename,
+                    f"{os.path.splitext(base_filename)[0]}.mp3",
+                    f"{os.path.splitext(base_filename)[0]}.m4a",
+                ]
+                audio_path = next((p for p in possible_paths if os.path.exists(p)), None)
+                if not audio_path:
+                    raise FileNotFoundError("Audio download did not produce a usable file.")
+
+                return speech_service.transcribe_file(audio_path)
+        except Exception as exc:
+            logger.warning(f"Could not download/transcribe audio for {video_url}: {exc}")
+            return None
 

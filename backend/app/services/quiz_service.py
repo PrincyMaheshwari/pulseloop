@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Optional, Dict
 from datetime import datetime
 from bson import ObjectId
@@ -34,12 +35,19 @@ class QuizService:
             summary = content_item.get("summary", "")
             transcript = content_item.get("transcript", "")
             content_type = content_item.get("type", "article")
+            transcript_segments = content_item.get("transcript_segments", []) or []
             
             # Generate quiz questions
+            if content_type in ("video", "podcast") and transcript:
+                quiz_source_text = transcript
+            else:
+                quiz_source_text = content_item.get("description", "") or summary
+
             questions_data = ai_service.generate_quiz(
-                content_item.get("description", ""),
+                quiz_source_text,
                 summary,
-                content_type
+                content_type,
+                transcript_segments=transcript_segments,
             )
             
             # Convert to QuizQuestion format
@@ -104,6 +112,7 @@ class QuizService:
             content_item = content_service.get_content_item(content_id)
             summary = content_item.get("summary", "") if content_item else ""
             transcript = content_item.get("transcript", "") if content_item else ""
+            transcript_segments = content_item.get("transcript_segments", []) if content_item else []
             content_type = content_item.get("type", "article") if content_item else "article"
             
             # Calculate tech score change
@@ -137,13 +146,21 @@ class QuizService:
             # If failed, generate review hints and new quiz
             if not passed:
                 # Generate review hints
-                review_hints = ai_service.generate_review_hints(
-                    summary,
-                    transcript,
-                    content_type,
-                    wrong_indices,
-                    questions
-                )
+                if content_type in ("video", "podcast") and transcript_segments:
+                    review_hints = self._generate_timestamp_review_hints(
+                        wrong_indices,
+                        questions,
+                        transcript_segments,
+                    )
+                else:
+                    review_hints = ai_service.generate_review_hints(
+                        summary,
+                        transcript,
+                        content_type,
+                        wrong_indices,
+                        questions,
+                        transcript_segments=transcript_segments,
+                    )
                 attempt_data["review_hints"] = review_hints
                 
                 # Generate retry quiz
@@ -153,7 +170,8 @@ class QuizService:
                     transcript,
                     content_type,
                     wrong_concepts,
-                    questions
+                    questions,
+                    transcript_segments=transcript_segments,
                 )
                 
                 # Create new quiz version
@@ -189,6 +207,92 @@ class QuizService:
         except Exception as e:
             logger.error(f"Error submitting quiz: {e}")
             return {"error": str(e)}
+
+    def _generate_timestamp_review_hints(
+        self,
+        wrong_indices: List[int],
+        questions: List[Dict],
+        transcript_segments: List[Dict],
+    ) -> Dict:
+        hints: List[str] = []
+        concepts: List[str] = []
+        used_ranges = set()
+
+        for idx in wrong_indices:
+            if idx >= len(questions):
+                continue
+            question = questions[idx]
+            query_text = f"{question.get('question', '')} {question.get('explanation', '')}"
+            concepts.append(question.get("question", "").strip())
+
+            for segment in self._find_relevant_segments(query_text, transcript_segments):
+                start_ms = segment.get("start_ms", 0)
+                end_ms = segment.get("end_ms", start_ms)
+                range_str = self._format_ms_range(start_ms, end_ms)
+                if range_str not in used_ranges:
+                    hints.append(range_str)
+                    used_ranges.add(range_str)
+
+        # Ensure we always return something, even if no matches were found
+        if not hints and transcript_segments:
+            fallback_segment = transcript_segments[0]
+            hints.append(self._format_ms_range(fallback_segment.get("start_ms", 0), fallback_segment.get("end_ms", 0)))
+
+        concepts = list(dict.fromkeys([c for c in concepts if c]))
+
+        return {
+            "timestamps": hints,
+            "articleHighlights": [],
+            "concepts": concepts,
+        }
+
+    def _find_relevant_segments(
+        self,
+        query_text: str,
+        segments: List[Dict],
+        limit: int = 2,
+    ) -> List[Dict]:
+        if not segments:
+            return []
+
+        query_tokens = self._tokenise(query_text)
+        if not query_tokens:
+            return segments[:limit]
+
+        scored_segments: List[Dict] = []
+        for segment in segments:
+            text = segment.get("text", "")
+            if not text:
+                continue
+            segment_tokens = self._tokenise(text)
+            if not segment_tokens:
+                continue
+            overlap = len(query_tokens.intersection(segment_tokens))
+            if overlap > 0:
+                scored_segments.append({"segment": segment, "score": overlap})
+
+        if not scored_segments:
+            return segments[:limit]
+
+        scored_segments.sort(key=lambda item: item["score"], reverse=True)
+        return [item["segment"] for item in scored_segments[:limit]]
+
+    @staticmethod
+    def _tokenise(text: str) -> set:
+        tokens = set()
+        for token in re.findall(r"\b\w+\b", text.lower()):
+            if len(token) > 3:
+                tokens.add(token)
+        return tokens
+
+    @staticmethod
+    def _format_ms_range(start_ms: int, end_ms: int) -> str:
+        def _fmt(ms: int) -> str:
+            minutes = ms // 60000
+            seconds = (ms % 60000) // 1000
+            return f"{minutes:02d}:{seconds:02d}"
+
+        return f"{_fmt(start_ms)}-{_fmt(end_ms)}"
 
 # Singleton instance
 quiz_service = QuizService()
