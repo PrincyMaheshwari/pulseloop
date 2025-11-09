@@ -16,7 +16,7 @@ A B2B SaaS platform that keeps company employees or university students continuo
 ### Backend
 - **Python FastAPI** on Azure App Service
 - **MongoDB Atlas** for database
-- **Azure OpenAI** (GPT-4o-mini/GPT-4o) for AI features
+- **Azure AI Foundry** (DeepSeek-V3.1) for AI features
 - **Azure Cognitive Services Speech-to-Text** for transcripts
 - **Azure Blob Storage** for content storage
 - **Azure Functions** for background jobs
@@ -56,10 +56,10 @@ pulseloop/
 Create a `.env` file in the `backend` directory with the following variables:
 
 ```env
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT=https://<your-endpoint>.openai.azure.com/
-AZURE_OPENAI_KEY=<your-key>
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini
+# DeepSeek on Azure AI Foundry
+AZURE_DEEPSEEK_ENDPOINT=https://princymaheshwari069-010-resource.cognitiveservices.azure.com/
+AZURE_DEEPSEEK_KEY=<YOUR_DEEPSEEK_API_KEY>
+AZURE_DEEPSEEK_DEPLOYMENT_NAME=DeepSeek-V3.1
 
 # Azure Speech Services
 AZURE_SPEECH_KEY=<your-speech-key>

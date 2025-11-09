@@ -78,7 +78,7 @@ az functionapp create \
 
 1. Go to Azure Portal
 2. Create an Azure AI Foundry project
-3. Deploy GPT-4o-mini model
+3. Deploy DeepSeek-V3.1 model
 4. Note the endpoint and key
 
 ### 9. Create Static Web App (Frontend)
@@ -97,9 +97,9 @@ az staticwebapp create \
 Add the following Application Settings in Azure Portal:
 
 ```
-AZURE_OPENAI_ENDPOINT=https://<your-endpoint>.openai.azure.com/
-AZURE_OPENAI_KEY=<your-key>
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini
+AZURE_DEEPSEEK_ENDPOINT=https://princymaheshwari069-010-resource.cognitiveservices.azure.com/
+AZURE_DEEPSEEK_KEY=<your-key>
+AZURE_DEEPSEEK_DEPLOYMENT_NAME=DeepSeek-V3.1
 AZURE_SPEECH_KEY=<your-speech-key>
 AZURE_SPEECH_REGION=eastus
 AZURE_STORAGE_CONNECTION_STRING=<storage-connection-string>
@@ -117,14 +117,14 @@ SECRET_KEY=<generate-a-secure-secret-key>
 Store sensitive values in Key Vault:
 
 ```bash
-az keyvault secret set --vault-name kv-techpulse-dev --name azure-openai-key --value <your-key>
+az keyvault secret set --vault-name kv-techpulse-dev --name azure-deepseek-key --value <your-key>
 az keyvault secret set --vault-name kv-techpulse-dev --name mongodb-uri --value <atlas-connection-string>
 az keyvault secret set --vault-name kv-techpulse-dev --name elevenlabs-api-key --value <your-key>
 ```
 
 Reference in App Service:
 ```
-AZURE_OPENAI_KEY=@Microsoft.KeyVault(SecretUri=https://kv-techpulse-dev.vault.azure.net/secrets/azure-openai-key/)
+AZURE_DEEPSEEK_KEY=@Microsoft.KeyVault(SecretUri=https://kv-techpulse-dev.vault.azure.net/secrets/azure-deepseek-key/)
 ```
 
 ## Deployment

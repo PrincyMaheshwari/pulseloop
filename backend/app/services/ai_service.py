@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 class AIService:
     def __init__(self):
         self.client = AzureOpenAI(
-            api_key=settings.AZURE_OPENAI_KEY,
-            api_version="2024-02-15-preview",
-            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT
+            api_key=settings.deepseek_key,
+            azure_endpoint=settings.deepseek_endpoint,
+            api_version=settings.openai_api_version,
         )
-        self.deployment_name = settings.AZURE_OPENAI_DEPLOYMENT_NAME
+        self.model = settings.deepseek_model
     
     def generate_summary(self, content: str, content_type: str = "article") -> str:
         """Generate a concise summary of the content"""
@@ -26,7 +26,7 @@ Content:
 Summary:"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates clear, concise summaries of technical and industry content."},
                     {"role": "user", "content": prompt}
@@ -50,7 +50,7 @@ Summary: {summary}
 Tags (comma-separated):"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that generates relevant tags for content."},
                     {"role": "user", "content": prompt}
@@ -97,7 +97,7 @@ Example format:
 }}"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates educational quizzes. Always return valid JSON with a 'questions' array."},
                     {"role": "user", "content": prompt}
@@ -165,7 +165,7 @@ Return JSON with:
 }}"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that provides targeted learning feedback. Always return valid JSON."},
                     {"role": "user", "content": prompt}
@@ -217,7 +217,7 @@ Example format:
 }}"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates educational quizzes focusing on specific concepts. Always return valid JSON with a 'questions' array."},
                     {"role": "user", "content": prompt}
@@ -276,7 +276,7 @@ Format:
 Limit to 5-8 steps."""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates visual storyboards for educational content. Always return valid JSON with a 'steps' array."},
                     {"role": "user", "content": prompt}
@@ -325,7 +325,7 @@ Return a JSON object with scores for each role:
 }}"""
             
             response = self.client.chat.completions.create(
-                model=self.deployment_name,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that rates content relevance. Always return valid JSON."},
                     {"role": "user", "content": prompt}

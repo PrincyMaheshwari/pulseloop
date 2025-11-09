@@ -8,7 +8,7 @@
 2. Node.js 18+
 3. MongoDB Atlas account (or local MongoDB)
 4. Azure account with:
-   - Azure OpenAI access
+   - Azure AI Foundry (DeepSeek-V3.1 deployment)
    - Azure Cognitive Services Speech
    - Azure Blob Storage
 5. ElevenLabs API key
@@ -38,7 +38,7 @@ cp .env.example .env
 ```
 
 5. **Fill in your credentials in `.env`:**
-   - Azure OpenAI endpoint and key
+   - Azure AI Foundry DeepSeek endpoint and key
    - Azure Speech key and region
    - Azure Storage connection string
    - MongoDB Atlas connection string
@@ -141,9 +141,9 @@ curl http://localhost:8000/api/feed \
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL | Yes |
-| `AZURE_OPENAI_KEY` | Azure OpenAI API key | Yes |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | Deployment name (e.g., gpt-4o-mini) | Yes |
+| `AZURE_DEEPSEEK_ENDPOINT` | Azure AI Foundry DeepSeek endpoint URL | Yes |
+| `AZURE_DEEPSEEK_KEY` | Azure AI Foundry DeepSeek API key | Yes |
+| `AZURE_DEEPSEEK_DEPLOYMENT_NAME` | Deployment name (e.g., DeepSeek-V3.1) | Yes |
 | `AZURE_SPEECH_KEY` | Azure Speech Services key | Yes |
 | `AZURE_SPEECH_REGION` | Azure Speech region | Yes |
 | `AZURE_STORAGE_CONNECTION_STRING` | Azure Blob Storage connection string | Yes |

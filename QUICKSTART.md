@@ -6,7 +6,7 @@
 - [ ] Node.js 18+ installed
 - [ ] MongoDB Atlas account
 - [ ] Azure account with:
-  - [ ] Azure OpenAI access
+  - [ ] Azure AI Foundry (DeepSeek-V3.1 deployment)
   - [ ] Azure Cognitive Services Speech
   - [ ] Azure Blob Storage
 - [ ] ElevenLabs API key
@@ -26,8 +26,9 @@ cp .env.example .env
 
 Edit `.env` and add your credentials:
 ```env
-AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
-AZURE_OPENAI_KEY=your-key
+AZURE_DEEPSEEK_ENDPOINT=https://princymaheshwari069-010-resource.cognitiveservices.azure.com/
+AZURE_DEEPSEEK_KEY=your-key
+AZURE_DEEPSEEK_DEPLOYMENT_NAME=DeepSeek-V3.1
 AZURE_SPEECH_KEY=your-speech-key
 AZURE_SPEECH_REGION=eastus
 AZURE_STORAGE_CONNECTION_STRING=your-connection-string

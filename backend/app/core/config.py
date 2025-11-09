@@ -6,10 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
-    # Azure OpenAI
-    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-    AZURE_OPENAI_KEY: str = os.getenv("AZURE_OPENAI_KEY", "")
-    AZURE_OPENAI_DEPLOYMENT_NAME: str = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini")
+    # Azure AI Foundry - DeepSeek
+    deepseek_endpoint: str = os.getenv("AZURE_DEEPSEEK_ENDPOINT", "")
+    deepseek_key: str = os.getenv("AZURE_DEEPSEEK_KEY", "")
+    deepseek_model: str = os.getenv("AZURE_DEEPSEEK_MODEL", "DeepSeek-V3.1")
+    openai_api_version: str = os.getenv("OPENAI_API_VERSION", "2024-05-01-preview")
     
     # Azure Speech Services
     AZURE_SPEECH_KEY: str = os.getenv("AZURE_SPEECH_KEY", "")

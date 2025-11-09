@@ -10,7 +10,7 @@ PulseLoop is a B2B SaaS platform that keeps company employees or university stud
 - **Location**: `backend/`
 - **Framework**: FastAPI (Python 3.11+)
 - **Database**: MongoDB Atlas
-- **AI Services**: Azure OpenAI (GPT-4o-mini/GPT-4o)
+- **AI Services**: Azure AI Foundry (DeepSeek-V3.1)
 - **Storage**: Azure Blob Storage
 - **Voice**: ElevenLabs API
 - **Speech-to-Text**: Azure Cognitive Services
@@ -129,7 +129,7 @@ pulseloop/
 See `SETUP.md` for detailed environment variable documentation.
 
 ### Backend Required
-- Azure OpenAI credentials
+- Azure AI Foundry DeepSeek credentials
 - Azure Speech Services credentials
 - Azure Blob Storage connection string
 - MongoDB Atlas connection string
@@ -174,7 +174,7 @@ See `DEPLOYMENT.md` for detailed deployment instructions to Azure.
 - Azure Blob Storage
 - Azure Key Vault
 - Application Insights
-- Azure AI Foundry (OpenAI)
+- Azure AI Foundry (DeepSeek-V3.1)
 
 ## TODO / Future Enhancements
 
