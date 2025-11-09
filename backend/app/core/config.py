@@ -1,9 +1,36 @@
-from pydantic_settings import BaseSettings
-from typing import List
 import os
-from dotenv import load_dotenv
+from typing import List
 
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
+
+
+def load_key_vault_secrets() -> None:
+    key_vault_uri = os.getenv("AZURE_KEY_VAULT_URI")
+    if not key_vault_uri:
+        return
+
+    try:
+        credential = DefaultAzureCredential()
+        client = SecretClient(vault_url=key_vault_uri, credential=credential)
+
+        for secret_props in client.list_properties_of_secrets():
+            secret_name = secret_props.name
+            secret_value = client.get_secret(secret_name).value
+            env_var = secret_name.upper().replace("-", "_")
+            os.environ[env_var] = secret_value
+    except Exception as exc:
+        # Fail gracefully; fall back to .env/env vars only
+        import logging
+
+        logging.getLogger(__name__).warning("Key Vault secret load failed: %s", exc)
+
+
+load_key_vault_secrets()
 load_dotenv()
+
 
 class Settings(BaseSettings):
     # Azure AI Foundry - DeepSeek
