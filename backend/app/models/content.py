@@ -34,6 +34,7 @@ class ContentItem(BaseModel):
     description: Optional[str] = None
     published_at: datetime
     role_tags: List[str] = []  # Which roles this content is relevant for
+    tags: List[str] = []  # AI-generated metadata tags
     blob_uri: Optional[str] = None  # Azure Blob Storage URI for raw content/transcript
     transcript: Optional[str] = None  # For videos/podcasts
     transcript_segments: Optional[List[Dict]] = None  # Timestamped transcript segments

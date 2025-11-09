@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import axios from 'axios'
+
+import { useApiClient } from '@/lib/api'
 
 interface QuizQuestion {
   question: string
@@ -16,56 +17,79 @@ interface Quiz {
   questions: QuizQuestion[]
 }
 
+interface QuizSubmitResponse {
+  status: string
+  correct_count?: number
+  wrong_count?: number
+  review_hints?: any
+  next_quiz_id?: string
+  tech_score_change?: number
+  tech_score?: number
+  current_streak?: number
+  longest_streak?: number
+}
+
 export default function QuizPage() {
+  const api = useApiClient()
   const params = useParams()
   const router = useRouter()
   const contentId = params.id as string
   const [quiz, setQuiz] = useState<Quiz | null>(null)
   const [answers, setAnswers] = useState<number[]>([])
   const [submitted, setSubmitted] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<QuizSubmitResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [nextQuizId, setNextQuizId] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Check if this is a retry
-    const urlParams = new URLSearchParams(window.location.search)
-    const isRetry = urlParams.get('retry') === 'true'
-    
-    if (isRetry) {
-      // Get retry quiz
-      const user_id = 'user_placeholder_id' // TODO: Get from auth
-      axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/quiz/content/${contentId}/retry?user_id=${user_id}`)
-        .then(response => {
-          setQuiz(response.data)
-          setAnswers(new Array(response.data.questions.length).fill(-1))
-          setNextQuizId(response.data.id)
-          setLoading(false)
-        })
-        .catch(error => {
-          console.error('Error fetching retry quiz:', error)
-          alert('Retry quiz not available. Please try the original quiz.')
-          // Fallback to original quiz
-          loadOriginalQuiz()
-        })
-    } else {
-      loadOriginalQuiz()
+  const loadOriginalQuiz = useCallback(async () => {
+    try {
+      const data = await api.getJson<Quiz>(`/api/quiz/content/${contentId}`)
+      setQuiz(data)
+      setAnswers(new Array(data.questions.length).fill(-1))
+      setNextQuizId(null)
+    } catch (error) {
+      console.error('Error fetching quiz:', error)
+      alert('Unable to load quiz at this time.')
+    } finally {
+      setLoading(false)
     }
-  }, [contentId])
+  }, [api, contentId])
 
-  const loadOriginalQuiz = () => {
-    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/quiz/content/${contentId}`)
-      .then(response => {
-        setQuiz(response.data)
-        setAnswers(new Array(response.data.questions.length).fill(-1))
-        setNextQuizId(null)
-        setLoading(false)
-      })
-      .catch(error => {
-        console.error('Error fetching quiz:', error)
-        setLoading(false)
-      })
-  }
+  useEffect(() => {
+    let cancelled = false
+
+    const initialise = async () => {
+      setLoading(true)
+      const urlParams = new URLSearchParams(window.location.search)
+      const isRetry = urlParams.get('retry') === 'true'
+
+      if (isRetry) {
+        try {
+          const data = await api.getJson<Quiz>(`/api/quiz/content/${contentId}/retry`)
+          if (!cancelled) {
+            setQuiz(data)
+            setAnswers(new Array(data.questions.length).fill(-1))
+            setNextQuizId(data.id)
+            setLoading(false)
+          }
+        } catch (error) {
+          console.error('Error fetching retry quiz:', error)
+          alert('Retry quiz not available. Loading the original quiz instead.')
+          if (!cancelled) {
+            await loadOriginalQuiz()
+          }
+        }
+      } else if (!cancelled) {
+        await loadOriginalQuiz()
+      }
+    }
+
+    initialise()
+
+    return () => {
+      cancelled = true
+    }
+  }, [api, contentId, loadOriginalQuiz])
 
   const handleAnswerChange = (questionIndex: number, answerIndex: number) => {
     const newAnswers = [...answers]
@@ -73,32 +97,27 @@ export default function QuizPage() {
     setAnswers(newAnswers)
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (answers.some(a => a === -1)) {
       alert('Please answer all questions')
       return
     }
 
-    // TODO: Replace with actual user_id from auth
-    const user_id = 'user_placeholder_id'
-
-    axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/quiz/content/${contentId}/submit`, {
-      user_id,
-      answers,
-      quiz_id: nextQuizId || quiz?.id  // Use next_quiz_id if retrying, otherwise current quiz id
-    })
-      .then(response => {
-        setResult(response.data)
-        setSubmitted(true)
-        // Store next_quiz_id for potential retry
-        if (response.data.next_quiz_id) {
-          setNextQuizId(response.data.next_quiz_id)
-        }
-      })
-      .catch(error => {
-        console.error('Error submitting quiz:', error)
-        alert('Error submitting quiz')
-      })
+    try {
+      const payload = {
+        answers,
+        quiz_id: nextQuizId || quiz?.id,
+      }
+      const data = await api.postJson<QuizSubmitResponse>(`/api/quiz/content/${contentId}/submit`, payload)
+      setResult(data)
+      setSubmitted(true)
+      if (data.next_quiz_id) {
+        setNextQuizId(data.next_quiz_id)
+      }
+    } catch (error) {
+      console.error('Error submitting quiz:', error)
+      alert('Error submitting quiz')
+    }
   }
 
   if (loading) {
@@ -159,32 +178,94 @@ export default function QuizPage() {
               <p className="text-lg mb-4">
                 Status: {result?.status === 'passed' ? '✅ Passed' : '❌ Needs Retry'}
               </p>
-              
-              {result?.status === 'retry' && result?.review_hints && (
-                <div className="mt-6 p-4 bg-yellow-50 rounded">
-                  <h3 className="font-semibold mb-2">Review Hints</h3>
-                  {result.review_hints.timestamps && result.review_hints.timestamps.length > 0 && (
-                    <p>Re-watch these sections: {result.review_hints.timestamps.join(', ')}</p>
-                  )}
-                  {result.review_hints.articleHighlights && result.review_hints.articleHighlights.length > 0 && (
-                    <p>Re-read these paragraphs: {result.review_hints.articleHighlights.map((h: any) => h.paragraphIndex + 1).join(', ')}</p>
-                  )}
-                  <button
-                    onClick={() => {
-                      // Reset state and reload with retry quiz
-                      setSubmitted(false)
-                      setAnswers([])
-                      setResult(null)
-                      router.push(`/content/${contentId}/quiz?retry=true`)
-                      // Reload the page to fetch retry quiz
-                      window.location.reload()
-                    }}
-                    className="mt-4 px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700"
-                  >
-                    Retry Quiz
-                  </button>
-                </div>
+              {typeof result?.tech_score_change === 'number' && (
+                <p className="text-sm text-[#9FE870] mb-2">
+                  Tech score change: {result.tech_score_change > 0 ? '+' : ''}
+                  {result.tech_score_change}
+                </p>
               )}
+              {typeof result?.tech_score === 'number' && (
+                <p className="text-sm text-[#d6e6da]/80 mb-2">Current tech score: {result.tech_score}</p>
+              )}
+              {typeof result?.current_streak === 'number' && (
+                <p className="text-sm text-[#d6e6da]/80">Current streak: {result.current_streak} days</p>
+              )}
+              {typeof result?.longest_streak === 'number' && (
+                <p className="text-sm text-[#d6e6da]/60">Longest streak: {result.longest_streak} days</p>
+              )}
+              
+              {result?.review_hints &&
+                (() => {
+                  const isRetry = result.status === 'retry'
+                  const containerClass = isRetry
+                    ? 'bg-yellow-50 text-[#0b1410]'
+                    : 'bg-[#101d16]/70 border border-white/5 text-[#d6e6da]'
+                  const labelClass = isRetry ? 'text-sm font-medium text-[#0b1410]' : 'text-sm font-medium text-[#9FE870]'
+                  const chipClass = isRetry
+                    ? 'rounded-full bg-[#f5d565] px-3 py-1 text-xs font-semibold text-[#4a3a00]'
+                    : 'rounded-full bg-[#132118] px-3 py-1 text-xs font-semibold text-[#9FE870]'
+                  const bulletClass = isRetry ? 'list-disc space-y-1 pl-5 text-sm text-[#0b1410]' : 'list-disc space-y-1 pl-5 text-sm text-[#d6e6da]'
+
+                  return (
+                    <div className={`mt-6 rounded p-4 ${containerClass}`}>
+                      <h3 className="font-semibold mb-2">Review Hints</h3>
+                      {result.review_hints.timestamps && result.review_hints.timestamps.length > 0 && (
+                        <div className="mb-3">
+                          <p className={labelClass}>Re-watch these sections:</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {result.review_hints.timestamps.map((ts: string) => (
+                              <span key={ts} className={chipClass}>
+                                {ts}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {result.review_hints.articleHighlights && result.review_hints.articleHighlights.length > 0 && (
+                        <div className="mb-3">
+                          <p className={labelClass}>Re-read these paragraphs:</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {result.review_hints.articleHighlights.map((highlight: any, index: number) => {
+                              const paragraphIndex =
+                                typeof highlight === 'number'
+                                  ? highlight
+                                  : (highlight?.paragraphIndex ?? highlight) as number
+                              return (
+                                <span key={`${paragraphIndex}-${index}`} className={chipClass}>
+                                  Paragraph {paragraphIndex + 1}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {result.review_hints.concepts && result.review_hints.concepts.length > 0 && (
+                        <div className="mt-2">
+                          <p className={labelClass}>Focus on these concepts:</p>
+                          <ul className={`mt-2 ${bulletClass}`}>
+                            {result.review_hints.concepts.map((concept: string) => (
+                              <li key={concept}>{concept}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSubmitted(false)
+                          setAnswers([])
+                          setResult(null)
+                          if (result.status === 'retry') {
+                            router.push(`/content/${contentId}/quiz?retry=true`)
+                            window.location.reload()
+                          }
+                        }}
+                        className="mt-4 px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700"
+                      >
+                        {result.status === 'retry' ? 'Retry Quiz' : 'Review Content'}
+                      </button>
+                    </div>
+                  )
+                })()}
               
               <button
                 onClick={() => router.push('/dashboard')}

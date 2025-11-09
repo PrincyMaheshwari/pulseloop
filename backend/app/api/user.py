@@ -1,22 +1,23 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.services.user_service import user_service
+from app.utils.auth import get_current_user
 
 router = APIRouter()
 
 @router.get("/dashboard")
-async def get_dashboard(user_id: str):
+async def get_dashboard(current_user=Depends(get_current_user)):
     """Get user dashboard data"""
     try:
-        dashboard = user_service.get_user_dashboard(user_id)
+        dashboard = user_service.get_user_dashboard(current_user["id"])
         return dashboard
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats")
-async def get_user_stats(user_id: str):
+async def get_user_stats(current_user=Depends(get_current_user)):
     """Get user statistics"""
     try:
-        user = user_service.get_user(user_id)
+        user = user_service.get_user(current_user["id"])
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -25,12 +26,12 @@ async def get_user_stats(user_id: str):
         db = get_database()
         
         total_completions = db.quiz_attempts.count_documents({
-            "user_id": user_id,
+            "user_id": current_user["id"],
             "passed": True
         })
         
         first_try_passes = db.quiz_attempts.count_documents({
-            "user_id": user_id,
+            "user_id": current_user["id"],
             "passed": True,
             "attempt_number": 1
         })

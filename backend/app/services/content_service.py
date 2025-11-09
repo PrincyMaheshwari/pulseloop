@@ -21,6 +21,73 @@ class ContentService:
         value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
         return value or "content"
     
+    def _build_user_content_query(self, user: dict) -> dict:
+        and_clauses: List[dict] = []
+
+        job_role = (user.get("job_role") or user.get("role") or "").strip()
+        organization_id = user.get("organization_id")
+        org_document = None
+
+        if organization_id:
+            try:
+                org_document = self.db.organizations.find_one({"_id": ObjectId(organization_id)})
+            except Exception:
+                logger.debug("Organization %s not found by ObjectId", organization_id)
+                org_document = self.db.organizations.find_one({"slug": organization_id})
+
+            if org_document:
+                and_clauses.append({
+                    "$or": [
+                        {"organization_id": organization_id},
+                        {"organization_id": {"$exists": False}},
+                        {"organization_id": None},
+                    ]
+                })
+
+        if job_role:
+            normalized_role = job_role.lower()
+            and_clauses.append({
+                "$or": [
+                    {"role_tags": {"$in": [job_role, normalized_role, job_role.title()]}},
+                    {"role_tags": {"$size": 0}},
+                    {"role_tags": {"$exists": False}},
+                ]
+            })
+            role_keywords = {token for token in job_role.lower().replace("/", " ").replace("-", " ").split() if len(token) > 3}
+            if role_keywords:
+                and_clauses.append({
+                    "$or": [
+                        {"tags": {"$in": list(role_keywords)}},
+                        {"tags": {"$exists": False}},
+                    ]
+                })
+        else:
+            and_clauses.append({
+                "$or": [
+                    {"role_tags": {"$size": 0}},
+                    {"role_tags": {"$exists": False}},
+                ]
+            })
+
+        source_ids = user.get("source_ids")
+        if not source_ids and org_document:
+            source_ids = org_document.get("sources")
+
+        if source_ids:
+            and_clauses.append({"source_id": {"$in": source_ids}})
+
+        if and_clauses:
+            return {"$and": and_clauses}
+        return {}
+
+    @staticmethod
+    def _format_content_item(item: Optional[dict]) -> Optional[dict]:
+        if not item:
+            return None
+        item["id"] = str(item.get("_id", ""))
+        item.pop("_id", None)
+        return item
+
     def get_user_feed(self, user_id: str, limit: int = 20) -> List[dict]:
         """Get personalized feed for user based on their role"""
         try:
@@ -28,39 +95,25 @@ class ContentService:
             user = self.db.users.find_one({"_id": ObjectId(user_id)})
             if not user:
                 return []
-            
-            job_role = user.get("job_role")
-            organization_id = user.get("organization_id")
-            
-            # Get organization sources
-            org = self.db.organizations.find_one({"_id": ObjectId(organization_id)})
-            if not org:
-                return []
-            
-            # Build query for content relevant to user's role
-            # Note: organization_id might not be stored directly on content items
-            # Content is linked via sources which have organization_id
-            query = {
-                "$or": [
-                    {"role_tags": {"$in": [job_role]}},
-                    {"role_tags": {"$size": 0}}  # General content
-                ]
-            }
-            
-            # If organization has specific sources, filter by them
-            source_ids = org.get("sources", [])
-            if source_ids:
-                query["source_id"] = {"$in": source_ids}
-            
-            # Get content items sorted by published_at (latest first)
-            content_items = self.db.content_items.find(query).sort("published_at", -1).limit(limit)
+
+            query = self._build_user_content_query(user)
+
+            content_items = (
+                self.db.content_items.find(query)
+                .sort([
+                    ("priority_score", -1),
+                    ("published_at", -1),
+                    ("created_at", -1),
+                ])
+                .limit(limit)
+            )
             
             # Convert to list of dicts
             feed = []
             for item in content_items:
-                item["id"] = str(item["_id"])
-                item["_id"] = str(item["_id"])
-                feed.append(item)
+                formatted = self._format_content_item(item)
+                if formatted:
+                    feed.append(formatted)
             
             return feed
         except Exception as e:
@@ -92,14 +145,54 @@ class ContentService:
                         content_data.get("type", "article"),
                         transcript_segments=transcript_segments,
                     )
+
+            summary_text = content_data.get("summary") or ""
+            description_text = content_data.get("description") or ""
+
+            # Generate descriptive tags
+            if summary_text:
+                generated_tags = ai_service.generate_tags(description_text, summary_text)
+                if generated_tags:
+                    existing_tags = content_data.get("tags") or []
+                    content_data["tags"] = list(dict.fromkeys([tag.strip() for tag in (existing_tags + generated_tags) if tag]))
+
+            # Normalise role tags
+            if content_data.get("role_tags"):
+                normalised_roles = []
+                seen_roles = set()
+                for role in content_data["role_tags"]:
+                    if not role:
+                        continue
+                    role_text = role.strip()
+                    if not role_text:
+                        continue
+                    key = role_text.lower()
+                    if key not in seen_roles:
+                        seen_roles.add(key)
+                        normalised_roles.append(role_text)
+                content_data["role_tags"] = normalised_roles
+
+            # Derive role tags from generated tags if none provided
+            if not content_data.get("role_tags") and content_data.get("tags"):
+                inferred_roles = []
+                seen_roles = set()
+                for tag in content_data["tags"]:
+                    key = tag.lower()
+                    if key not in seen_roles:
+                        seen_roles.add(key)
+                        inferred_roles.append(tag)
+                content_data["role_tags"] = inferred_roles[:5]
+
+            # Calculate priority score
+            priority_source = summary_text or description_text or content_data.get("transcript") or ""
+            if priority_source:
+                role_context = content_data.get("role_tags") or content_data.get("tags") or []
+                content_data["priority_score"] = ai_service.calculate_priority_score(priority_source, role_context)
             
-            # Generate tags if not provided
-            if not content_data.get("role_tags") and content_data.get("summary"):
-                content_data["role_tags"] = ai_service.generate_tags(
-                    content_data.get("description", ""),
-                    content_data["summary"]
-                )
-            
+            # Ensure tags field exists
+            if "tags" not in content_data:
+                content_data["tags"] = []
+
             # Set timestamps
             content_data["created_at"] = datetime.utcnow()
             content_data["updated_at"] = datetime.utcnow()
@@ -129,26 +222,7 @@ class ContentService:
             if not user:
                 return {"article": None, "video": None, "podcast": None}
             
-            job_role = user.get("job_role")
-            organization_id = user.get("organization_id")
-            
-            # Get organization sources
-            org = self.db.organizations.find_one({"_id": ObjectId(organization_id)})
-            if not org:
-                return {"article": None, "video": None, "podcast": None}
-            
-            # Build query for content relevant to user's role
-            query = {
-                "$or": [
-                    {"role_tags": {"$in": [job_role]}},
-                    {"role_tags": {"$size": 0}}  # General content
-                ]
-            }
-            
-            # If organization has specific sources, filter by them
-            source_ids = org.get("sources", [])
-            if source_ids:
-                query["source_id"] = {"$in": source_ids}
+            query = self._build_user_content_query(user)
             
             # Get latest article
             article_query = {**query, "type": "article"}
@@ -177,17 +251,9 @@ class ContentService:
                 "podcast": None
             }
             
-            if latest_article:
-                latest_article["id"] = str(latest_article["_id"])
-                result["article"] = latest_article
-            
-            if latest_video:
-                latest_video["id"] = str(latest_video["_id"])
-                result["video"] = latest_video
-            
-            if latest_podcast:
-                latest_podcast["id"] = str(latest_podcast["_id"])
-                result["podcast"] = latest_podcast
+            result["article"] = self._format_content_item(latest_article)
+            result["video"] = self._format_content_item(latest_video)
+            result["podcast"] = self._format_content_item(latest_podcast)
             
             return result
         except Exception as e:

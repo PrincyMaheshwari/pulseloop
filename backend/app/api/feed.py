@@ -1,47 +1,39 @@
-from fastapi import APIRouter, HTTPException, Header, Depends
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.services.content_service import content_service
+from app.utils.auth import get_current_user
 
 router = APIRouter()
 
-# Placeholder for user authentication
-# In production, extract user_id from JWT token
-def get_user_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extract user_id from authorization header - placeholder"""
-    # TODO: Validate JWT token and extract user_id
-    # For now, return a placeholder
-    if authorization:
-        # In production: decode JWT and extract user_id
-        return "user_placeholder_id"
-    raise HTTPException(status_code=401, detail="Unauthorized")
 
 @router.get("")
-async def get_feed(user_id: str = Depends(get_user_id)):
-    """Get personalized feed for user"""
+async def get_feed(current_user=Depends(get_current_user)):
+    """Get personalized feed for the authenticated user."""
     try:
-        feed = content_service.get_user_feed(user_id)
+        feed = content_service.get_user_feed(current_user["id"])
         return {"feed": feed}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @router.get("/today")
-async def get_todays_content(user_id: str = Depends(get_user_id)):
-    """Get today's top content for streak"""
+async def get_todays_content(current_user=Depends(get_current_user)):
+    """Get today's top content for streak tracking."""
     try:
-        content = content_service.get_todays_top_content(user_id)
+        content = content_service.get_todays_top_content(current_user["id"])
         if not content:
             return {"content": None, "message": "No content available for today"}
         return {"content": content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @router.get("/daily-options")
-async def get_daily_feed_options(user_id: str = Depends(get_user_id)):
-    """Get daily feed with latest article, video, and podcast options"""
+async def get_daily_feed_options(current_user=Depends(get_current_user)):
+    """Get the latest article, video, and podcast options for the user."""
     try:
-        options = content_service.get_daily_feed_options(user_id)
+        options = content_service.get_daily_feed_options(current_user["id"])
         return options
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 

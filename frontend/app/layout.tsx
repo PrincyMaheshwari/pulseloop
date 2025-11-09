@@ -3,6 +3,10 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import Link from 'next/link'
 
+import { AuthStatus } from '@/components/auth/AuthStatus'
+
+import { Providers } from './providers'
+
 const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'] })
 
 export const metadata: Metadata = {
@@ -57,6 +61,7 @@ function SiteHeader() {
           >
             Schedule a call
           </Link>
+          <AuthStatus />
         </div>
       </div>
     </header>
@@ -71,10 +76,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-[#07100c] text-[#ecf4ed]`}>
-        <div className="min-h-screen bg-gradient-to-br from-[#0b1913] via-[#08140f] to-[#040806] text-[#ecf4ed]">
-          <SiteHeader />
-          <main className="px-6 pb-20 pt-10 md:px-10">{children}</main>
-        </div>
+        <Providers>
+          <div className="min-h-screen bg-gradient-to-br from-[#0b1913] via-[#08140f] to-[#040806] text-[#ecf4ed]">
+            <SiteHeader />
+            <main className="px-6 pb-20 pt-10 md:px-10">{children}</main>
+          </div>
+        </Providers>
       </body>
     </html>
   )

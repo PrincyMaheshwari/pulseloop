@@ -218,7 +218,7 @@ npm install
 
 3. **Create `.env.local` file:**
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 NEXT_PUBLIC_AZURE_AD_CLIENT_ID=<your-client-id>
 NEXT_PUBLIC_AZURE_AD_TENANT_ID=<your-tenant-id>
 ```

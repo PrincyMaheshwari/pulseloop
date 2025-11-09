@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     
     # Azure Key Vault
     AZURE_KEY_VAULT_URI: str = os.getenv("AZURE_KEY_VAULT_URI", "")
+
+    # Azure Active Directory
+    AZURE_AD_TENANT_ID: str = os.getenv("AZURE_AD_TENANT_ID", "")
+    AZURE_AD_CLIENT_ID: str = os.getenv("AZURE_AD_CLIENT_ID", "")
+    AZURE_AD_ALLOWED_AUDIENCES: str = os.getenv("AZURE_AD_ALLOWED_AUDIENCES", "")
+    AZURE_AD_DEFAULT_ROLE: str = os.getenv("AZURE_AD_DEFAULT_ROLE", "employee")
     
     # MongoDB
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
@@ -70,6 +76,24 @@ class Settings(BaseSettings):
     
     class Config:
         case_sensitive = True
+
+    @property
+    def azure_ad_audiences(self) -> List[str]:
+        audiences = []
+        if self.AZURE_AD_CLIENT_ID:
+            audiences.append(self.AZURE_AD_CLIENT_ID)
+            audiences.append(f"api://{self.AZURE_AD_CLIENT_ID}")
+        if self.AZURE_AD_ALLOWED_AUDIENCES:
+            extra = [value.strip() for value in self.AZURE_AD_ALLOWED_AUDIENCES.split(",") if value.strip()]
+            audiences.extend(extra)
+        # Preserve order while removing duplicates
+        seen = set()
+        deduped = []
+        for audience in audiences:
+            if audience not in seen:
+                seen.add(audience)
+                deduped.append(audience)
+        return deduped
 
 settings = Settings()
 

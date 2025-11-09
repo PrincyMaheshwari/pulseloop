@@ -145,22 +145,40 @@ class QuizService:
             
             # If failed, generate review hints and new quiz
             if not passed:
-                # Generate review hints
-                if content_type in ("video", "podcast") and transcript_segments:
-                    review_hints = self._generate_timestamp_review_hints(
-                        wrong_indices,
-                        questions,
-                        transcript_segments,
-                    )
-                else:
-                    review_hints = ai_service.generate_review_hints(
-                        summary,
-                        transcript,
-                        content_type,
-                        wrong_indices,
-                        questions,
-                        transcript_segments=transcript_segments,
-                    )
+                candidate_segments = self._select_relevant_segments(
+                    wrong_indices,
+                    questions,
+                    transcript_segments,
+                )
+                review_hints = ai_service.generate_review_hints(
+                    summary,
+                    transcript,
+                    content_type,
+                    wrong_indices,
+                    questions,
+                    transcript_segments=transcript_segments,
+                    candidate_segments=candidate_segments,
+                ) or {}
+                if not isinstance(review_hints, dict):
+                    review_hints = {"articleHighlights": [], "timestamps": [], "concepts": []}
+                if content_type in ("video", "podcast") and candidate_segments:
+                    timestamps = review_hints.get("timestamps") or []
+                    if not timestamps:
+                        fallback_ranges = []
+                        for segment in candidate_segments[:5]:
+                            start_ms = segment.get("start_ms", 0)
+                            end_ms = segment.get("end_ms", start_ms)
+                            fallback_ranges.append(self._format_ms_to_mmss(start_ms) + "-" + self._format_ms_to_mmss(end_ms))
+                        if fallback_ranges:
+                            review_hints["timestamps"] = fallback_ranges
+                if "concepts" not in review_hints or not review_hints["concepts"]:
+                    inferred_concepts = [
+                        questions[idx].get("question", "").strip()
+                        for idx in wrong_indices
+                        if 0 <= idx < len(questions)
+                    ]
+                    review_hints["concepts"] = [c for c in inferred_concepts if c]
+
                 attempt_data["review_hints"] = review_hints
                 
                 # Generate retry quiz
@@ -195,12 +213,20 @@ class QuizService:
                 {"_id": ObjectId(user_id)},
                 {"$inc": {"tech_score": tech_score_change}}
             )
-            
+
+            user_doc = self.db.users.find_one({"_id": ObjectId(user_id)})
+            current_tech_score = user_doc.get("tech_score", 0) if user_doc else 0
+            current_streak = user_doc.get("current_streak", 0) if user_doc else 0
+            longest_streak = user_doc.get("longest_streak", 0) if user_doc else 0
+
             return {
                 "status": "passed" if passed else "retry",
                 "correct_count": correct_count,
                 "wrong_count": wrong_count,
                 "tech_score_change": tech_score_change,
+                "tech_score": current_tech_score,
+                "current_streak": current_streak,
+                "longest_streak": longest_streak,
                 "review_hints": attempt_data.get("review_hints"),
                 "next_quiz_id": attempt_data.get("next_quiz_id")
             }
@@ -208,91 +234,63 @@ class QuizService:
             logger.error(f"Error submitting quiz: {e}")
             return {"error": str(e)}
 
-    def _generate_timestamp_review_hints(
+    def _select_relevant_segments(
         self,
         wrong_indices: List[int],
         questions: List[Dict],
-        transcript_segments: List[Dict],
-    ) -> Dict:
-        hints: List[str] = []
-        concepts: List[str] = []
-        used_ranges = set()
-
-        for idx in wrong_indices:
-            if idx >= len(questions):
-                continue
-            question = questions[idx]
-            query_text = f"{question.get('question', '')} {question.get('explanation', '')}"
-            concepts.append(question.get("question", "").strip())
-
-            for segment in self._find_relevant_segments(query_text, transcript_segments):
-                start_ms = segment.get("start_ms", 0)
-                end_ms = segment.get("end_ms", start_ms)
-                range_str = self._format_ms_range(start_ms, end_ms)
-                if range_str not in used_ranges:
-                    hints.append(range_str)
-                    used_ranges.add(range_str)
-
-        # Ensure we always return something, even if no matches were found
-        if not hints and transcript_segments:
-            fallback_segment = transcript_segments[0]
-            hints.append(self._format_ms_range(fallback_segment.get("start_ms", 0), fallback_segment.get("end_ms", 0)))
-
-        concepts = list(dict.fromkeys([c for c in concepts if c]))
-
-        return {
-            "timestamps": hints,
-            "articleHighlights": [],
-            "concepts": concepts,
-        }
-
-    def _find_relevant_segments(
-        self,
-        query_text: str,
-        segments: List[Dict],
-        limit: int = 2,
+        transcript_segments: Optional[List[Dict]],
+        max_segments: int = 20,
     ) -> List[Dict]:
-        if not segments:
+        if not transcript_segments:
             return []
 
-        query_tokens = self._tokenise(query_text)
-        if not query_tokens:
-            return segments[:limit]
+        keyword_sets: List[set] = []
+        for idx in wrong_indices:
+            if 0 <= idx < len(questions):
+                q = questions[idx]
+                text = f"{q.get('question', '')} {q.get('explanation', '')}"
+                tokens = {token for token in re.findall(r"[A-Za-z]{4,}", text.lower())}
+                if tokens:
+                    keyword_sets.append(tokens)
 
-        scored_segments: List[Dict] = []
-        for segment in segments:
-            text = segment.get("text", "")
-            if not text:
+        scored_segments: List[tuple[int, Dict]] = []
+        for segment in transcript_segments:
+            segment_text = segment.get("text", "")
+            if not segment_text:
                 continue
-            segment_tokens = self._tokenise(text)
-            if not segment_tokens:
-                continue
-            overlap = len(query_tokens.intersection(segment_tokens))
-            if overlap > 0:
-                scored_segments.append({"segment": segment, "score": overlap})
+            lower_segment = segment_text.lower()
+            score = 0
+            for keywords in keyword_sets:
+                score += sum(1 for kw in keywords if kw in lower_segment)
+            if score > 0:
+                scored_segments.append((score, segment))
 
         if not scored_segments:
-            return segments[:limit]
+            return transcript_segments[:max_segments]
 
-        scored_segments.sort(key=lambda item: item["score"], reverse=True)
-        return [item["segment"] for item in scored_segments[:limit]]
+        scored_segments.sort(key=lambda pair: pair[0], reverse=True)
+
+        selected: List[Dict] = []
+        seen_ranges = set()
+        for score, segment in scored_segments:
+            if len(selected) >= max_segments:
+                break
+            start_ms = segment.get("start_ms", 0)
+            end_ms = segment.get("end_ms", start_ms)
+            bucket = (start_ms // 10000, end_ms // 10000)
+            if bucket in seen_ranges:
+                continue
+            seen_ranges.add(bucket)
+            selected.append(segment)
+
+        return selected
 
     @staticmethod
-    def _tokenise(text: str) -> set:
-        tokens = set()
-        for token in re.findall(r"\b\w+\b", text.lower()):
-            if len(token) > 3:
-                tokens.add(token)
-        return tokens
-
-    @staticmethod
-    def _format_ms_range(start_ms: int, end_ms: int) -> str:
-        def _fmt(ms: int) -> str:
-            minutes = ms // 60000
-            seconds = (ms % 60000) // 1000
-            return f"{minutes:02d}:{seconds:02d}"
-
-        return f"{_fmt(start_ms)}-{_fmt(end_ms)}"
+    def _format_ms_to_mmss(ms: int) -> str:
+        seconds = ms // 1000
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        return f"{minutes:02}:{remaining_seconds:02}"
 
 # Singleton instance
 quiz_service = QuizService()

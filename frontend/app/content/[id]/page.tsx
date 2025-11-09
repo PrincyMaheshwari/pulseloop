@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import axios from 'axios'
 import Link from 'next/link'
+
+import { useApiClient } from '@/lib/api'
 
 interface StoryboardStep {
   step: number
@@ -26,9 +27,12 @@ interface ContentItem {
   summary?: string
   published_at: string
   animated_summary?: AnimatedSummary
+  tags?: string[]
+  priority_score?: number
 }
 
 export default function ContentPage() {
+  const api = useApiClient()
   const params = useParams()
   const contentId = params.id as string
   const [content, setContent] = useState<ContentItem | null>(null)
@@ -40,16 +44,26 @@ export default function ContentPage() {
   const [audioPlaying, setAudioPlaying] = useState(false)
 
   useEffect(() => {
-    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/content/${contentId}`)
-      .then(response => {
-        setContent(response.data)
-        setLoading(false)
+    let cancelled = false
+    api
+      .getJson<ContentItem>(`/api/content/${contentId}`)
+      .then(result => {
+        if (!cancelled) {
+          setContent(result)
+          setLoading(false)
+        }
       })
       .catch(error => {
         console.error('Error fetching content:', error)
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       })
-  }, [contentId])
+
+    return () => {
+      cancelled = true
+    }
+  }, [api, contentId])
 
   if (loading) {
     return <div className="p-8">Loading...</div>
@@ -74,12 +88,27 @@ export default function ContentPage() {
             <span className="text-sm text-gray-500">
               {new Date(content.published_at).toLocaleDateString()}
             </span>
+            {typeof content.priority_score === 'number' && (
+              <span className="ml-auto rounded-full border border-primary-200 px-3 py-1 text-xs font-semibold text-primary-600">
+                Priority {(content.priority_score * 100).toFixed(0)}%
+              </span>
+            )}
           </div>
           
           <h1 className="text-3xl font-bold mb-4">{content.title}</h1>
           
           {content.description && (
             <p className="text-gray-600 mb-6">{content.description}</p>
+          )}
+
+          {content.tags && content.tags.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-2">
+              {content.tags.map(tag => (
+                <span key={tag} className="rounded-full border border-primary-200 px-3 py-1 text-xs font-semibold text-primary-600">
+                  #{tag}
+                </span>
+              ))}
+            </div>
           )}
           
           {/* Content Type Specific Rendering */}
@@ -124,10 +153,8 @@ export default function ContentPage() {
               if (!showSummary) {
                 setLoadingSummary(true)
                 try {
-                  const response = await axios.get(
-                    `${process.env.NEXT_PUBLIC_API_URL}/api/content/${contentId}/summary`
-                  )
-                  setAnimatedSummary(response.data)
+                  const summary = await api.getJson<AnimatedSummary>(`/api/content/${contentId}/summary`)
+                  setAnimatedSummary(summary)
                   setShowSummary(true)
                 } catch (error) {
                   console.error('Error fetching animated summary:', error)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from pydantic import BaseModel
 from app.services.content_service import content_service
@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.database import get_database
 from bson import ObjectId
 import json
+from app.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -75,16 +76,17 @@ async def get_animated_summary(content_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{content_id}/complete")
-async def mark_content_complete(content_id: str, user_id: str):
+async def mark_content_complete(content_id: str, current_user=Depends(get_current_user)):
     """Mark content as completed by user (viewed, not streak-eligible)"""
     try:
         from datetime import datetime
         db = get_database()
         # Create event for tracking views
         event = {
-            "user_id": user_id,
+            "user_id": current_user["id"],
             "content_id": content_id,
             "event_type": "content_viewed",
+            "organization_id": current_user.get("organization_id"),
             "created_at": datetime.utcnow()
         }
         db.events.insert_one(event)

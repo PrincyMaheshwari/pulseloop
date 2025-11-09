@@ -157,17 +157,23 @@ Tags (comma-separated):"""
         wrong_answers: List[int],
         original_quiz: List[Dict],
         transcript_segments: Optional[List[Dict]] = None,
+        candidate_segments: Optional[List[Dict]] = None,
     ) -> Dict:
         """Generate review hints (paragraph indices or timestamps) for missed concepts"""
         try:
-            if content_type in ("video", "podcast") and transcript_segments:
-                formatted_segments = self._format_segments_for_prompt(transcript_segments, limit=40, max_chars=180)
+            if content_type in ("video", "podcast") and (transcript_segments or candidate_segments):
+                formatted_segments = self._format_segments_for_prompt(
+                    candidate_segments or transcript_segments,
+                    limit=60,
+                    max_chars=220,
+                )
                 prompt = (
                     f"The learner missed {len(wrong_answers)} questions in a quiz about this {content_type}. "
                     "Identify the most relevant transcript segments to review. "
                     "Return JSON with a 'timestamps' array containing strings formatted as 'MM:SS-MM:SS', "
-                    "and a 'concepts' array summarising what they missed. "
-                    "Use the provided transcript segments with timestamps as reference.\n\n"
+                    "an optional 'articleHighlights' array (leave empty for audio/video), "
+                    "and a 'concepts' array summarising the key ideas they should revisit. "
+                    "Prioritise the transcript segments provided below.\n\n"
                     f"Summary:\n{summary}\n\n"
                     f"Questions (with correct answers/explanations):\n{json.dumps(original_quiz, indent=2)}\n\n"
                     f"Transcript segments:\n{formatted_segments}\n"
