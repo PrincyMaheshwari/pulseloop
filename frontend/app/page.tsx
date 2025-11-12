@@ -42,13 +42,13 @@ export default function Home() {
             <div className="flex flex-col gap-3 md:flex-row">
               <Link
                 href="/employee"
-                className="inline-flex items-center justify-center rounded-full bg-[#9FE870] px-6 py-3 text-sm font-semibold text-[#0B1410] shadow-lg shadow-lime-300/30 transition hover:scale-105"
+                className="inline-flex items-center justify-center rounded-full border border-[#9FE870]/50 px-6 py-3 text-sm font-semibold text-[#9FE870] transition hover:bg-[#9FE870] hover:text-[#0B1410] hover:shadow-lg hover:shadow-lime-300/30 focus-visible:bg-[#9FE870] focus-visible:text-[#0B1410] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9FE870]/50 active:bg-[#9FE870] active:text-[#0B1410]"
               >
                 I&apos;m an employee
               </Link>
               <Link
                 href="/admin"
-                className="inline-flex items-center justify-center rounded-full border border-[#9FE870]/50 px-6 py-3 text-sm font-semibold text-[#9FE870] hover:bg-[#132118]"
+                className="inline-flex items-center justify-center rounded-full border border-[#9FE870]/50 px-6 py-3 text-sm font-semibold text-[#9FE870] transition hover:bg-[#9FE870] hover:text-[#0B1410] hover:shadow-lg hover:shadow-lime-300/30 focus-visible:bg-[#9FE870] focus-visible:text-[#0B1410] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9FE870]/50 active:bg-[#9FE870] active:text-[#0B1410]"
               >
                 I oversee learning
               </Link>

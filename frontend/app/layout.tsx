@@ -51,10 +51,6 @@ function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <div className="flex gap-3 text-xs uppercase tracking-wider text-[#9FE870]">
-            <span className="rounded-full border border-[#9FE870]/50 px-3 py-1">57 Projects</span>
-            <span className="rounded-full border border-[#9FE870]/50 px-3 py-1">4 Awards</span>
-          </div>
           <Link
             href="#"
             className="rounded-full border border-[#9FE870]/50 bg-[#0F1B16]/70 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-green-400/10 transition hover:bg-[#9FE870] hover:text-[#0B1410]"
