@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
+    AUTH_DEV_BYPASS: bool = bool(os.getenv("AUTH_DEV_BYPASS", "false").lower() in ("1", "true", "yes"))
+    AUTH_DEV_BYPASS_USER_OID: str = os.getenv("AUTH_DEV_BYPASS_USER_OID", "00000000-0000-0000-0000-000000000001")
+    AUTH_DEV_BYPASS_USER_EMAIL: str = os.getenv("AUTH_DEV_BYPASS_USER_EMAIL", "dev.user@example.com")
+    AUTH_DEV_BYPASS_USER_NAME: str = os.getenv("AUTH_DEV_BYPASS_USER_NAME", "PulseLoop Dev User")
+    AUTH_DEV_BYPASS_USER_ROLE: str = os.getenv("AUTH_DEV_BYPASS_USER_ROLE", "employee")
+    AUTH_DEV_BYPASS_TENANT_ID: str = os.getenv("AUTH_DEV_BYPASS_TENANT_ID", "dev-tenant")
     
     class Config:
         case_sensitive = True

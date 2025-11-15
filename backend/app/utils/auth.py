@@ -18,8 +18,31 @@ if settings.AZURE_AD_TENANT_ID and settings.AZURE_AD_CLIENT_ID:
         raise RuntimeError(f"Failed to initialise Azure AD verifier: {exc}") from exc
 
 
+def _get_dev_bypass_user() -> dict:
+    claims = {
+        "oid": settings.AUTH_DEV_BYPASS_USER_OID,
+        "preferred_username": settings.AUTH_DEV_BYPASS_USER_EMAIL,
+        "email": settings.AUTH_DEV_BYPASS_USER_EMAIL,
+        "name": settings.AUTH_DEV_BYPASS_USER_NAME,
+        "roles": [settings.AUTH_DEV_BYPASS_USER_ROLE],
+        "tid": settings.AUTH_DEV_BYPASS_TENANT_ID,
+    }
+    user = user_service.get_or_create_user_from_claims(claims)
+    return {
+        "id": user["id"],
+        "email": user.get("email"),
+        "organization_id": user.get("organization_id"),
+        "role": user.get("role", settings.AZURE_AD_DEFAULT_ROLE),
+        "claims": claims,
+    }
+
+
 def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     """Validate a bearer token and return the associated user record."""
+    if settings.AUTH_DEV_BYPASS:
+        # Development bypass: ignore tokens entirely when enabled.
+        return _get_dev_bypass_user()
+
     if not _verifier:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

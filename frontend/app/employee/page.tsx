@@ -72,7 +72,7 @@ export default function EmployeeLanding() {
   const loadStats = useCallback(async () => {
     try {
       const data = await api.getJson<{ user: { tech_score?: number; current_streak?: number; longest_streak?: number } }>(
-        '/api/user/stats',
+        '/api/me/stats',
       )
       setTechScore(data.user?.tech_score ?? 0)
       setStreak(data.user?.current_streak ?? 0)
