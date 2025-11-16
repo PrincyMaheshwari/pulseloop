@@ -3,17 +3,41 @@ import logging
 from typing import List, Dict, Optional
 from openai import AzureOpenAI
 from app.core.config import settings
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
-        self.client = AzureOpenAI(
-            api_key=settings.deepseek_key,
-            azure_endpoint=settings.deepseek_endpoint,
-            api_version=settings.openai_api_version,
-        )
+        self._client: Optional[AzureOpenAI] = None
         self.model = settings.deepseek_model
+
+    def _get_client(self) -> AzureOpenAI:
+        """Lazily create Azure OpenAI client on first use"""
+        if self._client is None:
+            if not settings.deepseek_endpoint or not settings.deepseek_key:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Azure OpenAI (DeepSeek) is not configured. Please set AZURE_DEEPSEEK_ENDPOINT and AZURE_DEEPSEEK_KEY environment variables."
+                )
+            try:
+                self._client = AzureOpenAI(
+                    api_key=settings.deepseek_key,
+                    azure_endpoint=settings.deepseek_endpoint,
+                    api_version=settings.openai_api_version,
+                )
+            except Exception as exc:
+                logger.error("Failed to initialize Azure OpenAI client: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Failed to connect to Azure OpenAI: {exc}"
+                ) from exc
+        return self._client
+
+    @property
+    def client(self) -> AzureOpenAI:
+        """Property accessor for lazy client initialization"""
+        return self._get_client()
     
     def generate_summary(
         self,
@@ -39,7 +63,8 @@ class AIService:
                     f"Content:\n{trimmed_content}\n\nSummary:"
                 )
 
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates clear, concise summaries of technical and industry content."},
@@ -63,7 +88,8 @@ Summary: {summary}
 
 Tags (comma-separated):"""
             
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that generates relevant tags for content."},
@@ -112,7 +138,8 @@ Tags (comma-separated):"""
                     f"Article excerpt:\n{trimmed_content}\n"
                 )
 
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates educational quizzes. Always return valid JSON with a 'questions' array."},
@@ -192,7 +219,8 @@ Tags (comma-separated):"""
                     "Paragraph indices should be zero-based."
                 )
 
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that provides targeted learning feedback. Always return valid JSON."},
@@ -240,7 +268,8 @@ Tags (comma-separated):"""
                     f"Article excerpt:\n{trimmed_transcript}\n"
                 )
             
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates educational quizzes focusing on specific concepts. Always return valid JSON with a 'questions' array."},
@@ -299,7 +328,8 @@ Format:
 
 Limit to 5-8 steps."""
             
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that creates visual storyboards for educational content. Always return valid JSON with a 'steps' array."},
@@ -348,7 +378,8 @@ Return a JSON object with scores for each role:
   "average": 0.725
 }}"""
             
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that rates content relevance. Always return valid JSON."},

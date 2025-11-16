@@ -160,44 +160,131 @@ cp .env.example .env
 
 5. **Fill in your credentials in `.env`:**
 ```env
-# DeepSeek via Azure AI Foundry (direct models)
+# MongoDB Configuration (REQUIRED)
+MONGODB_URI=mongodb://localhost:27017  # or your MongoDB Atlas connection string
+MONGODB_DB_NAME=pulseloop
+
+# Azure AI Foundry (DeepSeek) Configuration
 AZURE_DEEPSEEK_ENDPOINT=https://<your-resource>.services.ai.azure.com/
 AZURE_DEEPSEEK_KEY=<YOUR_DEEPSEEK_API_KEY>
 AZURE_DEEPSEEK_MODEL=DeepSeek-V3.1
 OPENAI_API_VERSION=2024-05-01-preview
 
-# Azure Speech Services
+# Azure Speech Services Configuration
 AZURE_SPEECH_KEY=<your-speech-key>
 AZURE_SPEECH_REGION=eastus
 
-# Azure Storage
+# Azure Storage Configuration
 AZURE_STORAGE_CONNECTION_STRING=<storage-connection-string>
 AZURE_STORAGE_ACCOUNT_NAME=<account-name>
+STORAGE_CONTAINER_ARTICLES=articles-raw
+STORAGE_CONTAINER_TRANSCRIPTS=transcripts
+STORAGE_CONTAINER_SUMMARIES=audio-summaries
 
-# Azure Key Vault (optional, for production)
-AZURE_KEY_VAULT_URI=<key-vault-uri>
-
-# MongoDB Atlas
-MONGODB_URI=<atlas-connection-string>
-MONGODB_DB_NAME=pulseloop
-
-# ElevenLabs
+# ElevenLabs Configuration
 ELEVENLABS_API_KEY=<your-elevenlabs-key>
 
-# YouTube
+# Azure Active Directory (Azure AD) Configuration
+# Required for production authentication, optional for local development
+AZURE_AD_TENANT_ID=<your-azure-ad-tenant-id>
+AZURE_AD_CLIENT_ID=<your-azure-ad-client-id>
+AZURE_AD_ALLOWED_AUDIENCES=api://<your-client-id>
+AZURE_AD_DEFAULT_ROLE=employee
+
+# Development Authentication Bypass
+# Set to 'true' for local development when Azure AD is not configured
+# When Azure AD config is missing, this defaults to true automatically
+AUTH_DEV_BYPASS=true
+AUTH_DEV_BYPASS_USER_OID=00000000-0000-0000-0000-000000000001
+AUTH_DEV_BYPASS_USER_EMAIL=dev.user@example.com
+AUTH_DEV_BYPASS_USER_NAME=PulseLoop Dev User
+AUTH_DEV_BYPASS_USER_ROLE=employee
+AUTH_DEV_BYPASS_JOB_ROLE=Software Engineer - Canva
+AUTH_DEV_BYPASS_TENANT_ID=dev-tenant
+
+# Azure Key Vault (optional, disabled by default)
+# Set ENABLE_AZURE_KEY_VAULT=true to load secrets from Key Vault instead of .env
+# For local development, use .env file - Key Vault is not required
+ENABLE_AZURE_KEY_VAULT=false
+AZURE_KEY_VAULT_URI=<key-vault-uri>
+
+# YouTube Data API (optional, for YouTube content ingestion)
 YOUTUBE_API_KEY=<your-youtube-key>
 
-# Application
+# Application Configuration
 ENVIRONMENT=development
 SECRET_KEY=<your-secret-key-change-in-production>
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 ```
 
-6. **Initialize database:**
+**Important Notes:**
+
+- **Local Development**: The application runs locally by default. You only need to configure `MONGODB_URI` to get started.
+- **Azure Services**: All Azure services (Storage, OpenAI, Speech, ElevenLabs) are optional and consumed via their SDKs using API keys from `.env`. The app will gracefully report 503 errors if services are not configured, allowing you to test features incrementally.
+- **Authentication**: The app automatically enables `AUTH_DEV_BYPASS=true` if Azure AD configuration is missing, making local development easier.
+- **Key Vault**: Azure Key Vault is disabled by default. Set `ENABLE_AZURE_KEY_VAULT=true` only if you want to load secrets from Key Vault instead of `.env`. For local development, `.env` is recommended.
+
+6. **Initialize database (creates indexes and a sample org/user):**
 ```bash
 python app/scripts/init_db.py
 ```
 
-7. **Run the development server:**
+   **Optional:** Insert demo content so `/api/feed` has data:
+   ```bash
+   python app/scripts/seed_content.py
+   ```
+
+7. **Seed role-aware content sources:**
+   
+   The feed relies on the ingestion pipeline, so you need to insert source documents with `role_tags` matching your desired job roles. For example, using MongoDB shell or a script:
+   
+   ```python
+   from app.core.database import get_database
+   from datetime import datetime
+   
+   db = get_database()
+   
+   # Insert an RSS source with role tags matching your job role
+   source = {
+       "name": "TechCrunch",
+       "type": "rss",
+       "url": "https://techcrunch.com/feed/",
+       "role_tags": ["Software Engineer - Canva"],  # Match your AUTH_DEV_BYPASS_JOB_ROLE
+       "enabled": True,
+       "organization_id": "<your-org-id>",  # From init_db.py output
+       "created_at": datetime.utcnow(),
+       "updated_at": datetime.utcnow()
+   }
+   db.sources.insert_one(source)
+   ```
+
+8. **Run content ingestion (optional):**
+   
+   To populate content dynamically, run the Azure Functions ingestion locally:
+   
+   ```bash
+   # Install Azure Functions Core Tools (if not already installed)
+   npm install -g azure-functions-core-tools@4
+   
+   # Navigate to functions directory
+   cd backend/functions
+   
+   # Install function dependencies
+   pip install -r ../requirements-functions.txt
+   
+   # Start the function locally
+   func start
+   ```
+   
+   Ensure you have the required environment variables set in your `.env`:
+   - `YOUTUBE_API_KEY` (for YouTube sources)
+   - `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (for video/podcast transcription)
+   - `AZURE_STORAGE_CONNECTION_STRING` (for storing content)
+   - `AZURE_DEEPSEEK_ENDPOINT` and `AZURE_DEEPSEEK_KEY` (for AI processing)
+   
+   The ingestion function will process enabled sources and populate `content_items` with content matching your `role_tags`.
+
+9. **Run the development server:**
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
@@ -218,10 +305,24 @@ npm install
 
 3. **Create `.env.local` file:**
 ```env
+# Backend API Configuration
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_AZURE_AD_CLIENT_ID=<your-client-id>
-NEXT_PUBLIC_AZURE_AD_TENANT_ID=<your-tenant-id>
+
+# Development Authentication Bypass
+# Set to 'true' to skip Azure AD authentication in local development
+# This allows the app to work without Azure AD configuration
+NEXT_PUBLIC_DEV_AUTH_BYPASS=true
+
+# Azure Active Directory (Azure AD) Configuration
+# Required for production authentication
+# These can be left empty if using dev bypass mode
+NEXT_PUBLIC_AZURE_AD_CLIENT_ID=<your-azure-ad-client-id>
+NEXT_PUBLIC_AZURE_AD_TENANT_ID=<your-azure-ad-tenant-id>
+NEXT_PUBLIC_AZURE_AD_REDIRECT_URI=http://localhost:3000
+NEXT_PUBLIC_AZURE_AD_API_SCOPES=api://<your-client-id>/.default
 ```
+
+**Note:** For local development with the backend using `AUTH_DEV_BYPASS=true`, set `NEXT_PUBLIC_DEV_AUTH_BYPASS=true` in the frontend as well. This skips MSAL authentication and uses a static dev bypass token.
 
 4. **Run the development server:**
 ```bash
@@ -229,34 +330,6 @@ npm run dev
 ```
 
 The frontend will be available at `http://localhost:3000`
-
-#### Azure Functions Setup (Optional)
-
-1. **Install Azure Functions Core Tools:**
-```bash
-npm install -g azure-functions-core-tools@4
-```
-
-2. **Navigate to functions directory:**
-```bash
-cd backend/functions
-```
-
-3. **Create virtual environment:**
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-4. **Install dependencies:**
-```bash
-pip install -r ../requirements-functions.txt
-```
-
-5. **Run locally:**
-```bash
-func start
-```
 
 ## File Structure
 
@@ -293,12 +366,11 @@ pulseloop/
 │   │   ├── utils/         # Utilities
 │   │   │   └── auth.py    # Authentication utilities
 │   │   └── main.py        # FastAPI application
-│   ├── functions/         # Azure Functions
+│   ├── functions/         # Azure Functions (optional - background content ingestion jobs)
 │   │   └── ingest_content/ # Content ingestion function
 │   ├── requirements.txt   # Python dependencies
-│   ├── requirements-functions.txt # Function dependencies
-│   ├── .env.example       # Environment variable template
-│   └── startup.sh         # Startup script
+│   ├── requirements-functions.txt # Function dependencies (optional)
+│   └── .env.example       # Environment variable template
 ├── frontend/              # Next.js frontend
 │   ├── app/              # Next.js app directory
 │   │   ├── admin/        # Admin dashboard page
@@ -420,7 +492,7 @@ Following modern web application design guidelines:
 - **Secure Authentication**: JWT token-based authentication (Azure AD integration planned)
 - **Data Encryption**: All API communications use HTTPS
 - **Secure Storage**: MongoDB Atlas with encrypted connections
-- **API Key Management**: Azure Key Vault integration for production deployments
+- **API Key Management**: Azure Key Vault integration (optional, disabled by default - uses `.env` for local development)
 - **User Privacy**: User data stored securely with proper access controls
 - **Content Security**: Secure content ingestion and processing pipeline
 - **CORS Configuration**: Proper cross-origin resource sharing settings
@@ -432,28 +504,40 @@ Following modern web application design guidelines:
 - Safari 13+
 - Edge 80+
 
-## Deployment
+## Local Development
 
-### Azure App Service (Backend)
+This application is designed to run locally by default. Both the FastAPI backend and Next.js frontend can be run on your local machine without any Azure infrastructure dependencies.
 
-1. Create an App Service Plan and Web App in Azure Portal
-2. Configure Application Settings with all environment variables
-3. Deploy using GitHub Actions or Azure DevOps
-4. Enable Application Insights for monitoring
+### Running the Stack Locally
 
-### Azure Static Web Apps (Frontend)
+**Backend:**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
 
-1. Create a Static Web App in Azure Portal
-2. Connect to your GitHub repository
-3. Configure build settings for Next.js
-4. Set up custom domain (optional)
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Azure Functions (Background Jobs)
+Both services will start and communicate via the configured `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`).
 
-1. Create a Function App in Azure Portal
-2. Deploy the functions from the `backend/functions` directory
-3. Configure timer triggers for content ingestion
-4. Set up monitoring and alerts
+### Azure Services (Optional)
+
+The application can connect to Azure services (OpenAI, Speech, Storage, ElevenLabs) using API keys from your `.env` file. These services are:
+- **Optional**: The app gracefully handles missing configurations
+- **Consumed via SDKs**: No Azure infrastructure deployment required
+- **Configurable**: Set API keys in `.env` to enable specific features
+
+### Background Jobs (Optional)
+
+The `backend/functions` directory contains Azure Functions code for background content ingestion. This is optional and not required for local development. The functions are designed to run as scheduled background jobs in Azure, but can also be adapted to run locally as standalone Python scripts if needed.
 
 ## Future Enhancements
 

@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from fastapi import Header, HTTPException, status
@@ -8,6 +9,15 @@ from app.utils.azure_ad import AzureADVerifier, AzureADVerificationError
 
 _verifier: Optional[AzureADVerifier] = None
 
+# Auto-enable dev bypass if Azure AD is not configured
+# This allows the app to start locally without Azure AD config
+if not settings.AZURE_AD_TENANT_ID and not settings.AZURE_AD_CLIENT_ID:
+    # Default to enabling bypass when Azure AD config is missing (for local/dev)
+    if not os.getenv("AUTH_DEV_BYPASS"):
+        os.environ["AUTH_DEV_BYPASS"] = "true"
+        # Force reload of settings to pick up the new env var
+        settings.AUTH_DEV_BYPASS = True
+
 if settings.AZURE_AD_TENANT_ID and settings.AZURE_AD_CLIENT_ID:
     try:
         _verifier = AzureADVerifier(
@@ -15,7 +25,10 @@ if settings.AZURE_AD_TENANT_ID and settings.AZURE_AD_CLIENT_ID:
             audiences=settings.azure_ad_audiences,
         )
     except Exception as exc:  # pragma: no cover - configuration errors
-        raise RuntimeError(f"Failed to initialise Azure AD verifier: {exc}") from exc
+        # Log warning but don't crash - allow dev bypass to work
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Failed to initialise Azure AD verifier: %s. Using dev bypass if enabled.", exc)
 
 
 def _get_dev_bypass_user() -> dict:
@@ -26,6 +39,7 @@ def _get_dev_bypass_user() -> dict:
         "name": settings.AUTH_DEV_BYPASS_USER_NAME,
         "roles": [settings.AUTH_DEV_BYPASS_USER_ROLE],
         "tid": settings.AUTH_DEV_BYPASS_TENANT_ID,
+        "jobTitle": settings.AUTH_DEV_BYPASS_JOB_ROLE,
     }
     user = user_service.get_or_create_user_from_claims(claims)
     return {
@@ -44,10 +58,14 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
         return _get_dev_bypass_user()
 
     if not _verifier:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Azure AD authentication is not configured",
-        )
+        # If neither verifier nor bypass is available, return 500
+        if not settings.AUTH_DEV_BYPASS:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication is not configured. Set AUTH_DEV_BYPASS=true for local development or configure Azure AD.",
+            )
+        # Fall back to dev bypass if available
+        return _get_dev_bypass_user()
 
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")

@@ -156,9 +156,10 @@ export default function ContentPage() {
                   const summary = await api.getJson<AnimatedSummary>(`/api/content/${contentId}/summary`)
                   setAnimatedSummary(summary)
                   setShowSummary(true)
-                } catch (error) {
+                } catch (error: any) {
                   console.error('Error fetching animated summary:', error)
-                  alert('Error loading animated summary')
+                  const errorMessage = error?.message || 'Error loading animated summary'
+                  alert(errorMessage)
                 } finally {
                   setLoadingSummary(false)
                 }

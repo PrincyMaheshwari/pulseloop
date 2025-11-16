@@ -1,18 +1,33 @@
 import os
 from typing import List
 
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
+# Load .env first (local development)
+load_dotenv()
+
 
 def load_key_vault_secrets() -> None:
+    """Optionally load secrets from Azure Key Vault when ENABLE_AZURE_KEY_VAULT=true"""
+    enable_key_vault = os.getenv("ENABLE_AZURE_KEY_VAULT", "false").lower() in ("1", "true", "yes")
+    if not enable_key_vault:
+        return
+
     key_vault_uri = os.getenv("AZURE_KEY_VAULT_URI")
     if not key_vault_uri:
+        import logging
+        logging.getLogger(__name__).warning(
+            "ENABLE_AZURE_KEY_VAULT=true but AZURE_KEY_VAULT_URI is not set. "
+            "Skipping Key Vault secret loading."
+        )
         return
 
     try:
+        # Conditional imports - only load Azure SDK when Key Vault is enabled
+        from azure.identity import DefaultAzureCredential
+        from azure.keyvault.secrets import SecretClient
+
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=key_vault_uri, credential=credential)
 
@@ -21,15 +36,17 @@ def load_key_vault_secrets() -> None:
             secret_value = client.get_secret(secret_name).value
             env_var = secret_name.upper().replace("-", "_")
             os.environ[env_var] = secret_value
+        
+        import logging
+        logging.getLogger(__name__).info("Loaded secrets from Azure Key Vault")
     except Exception as exc:
         # Fail gracefully; fall back to .env/env vars only
         import logging
-
         logging.getLogger(__name__).warning("Key Vault secret load failed: %s", exc)
 
 
+# Load Key Vault secrets if explicitly enabled (opt-in)
 load_key_vault_secrets()
-load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -78,6 +95,7 @@ class Settings(BaseSettings):
     AUTH_DEV_BYPASS_USER_EMAIL: str = os.getenv("AUTH_DEV_BYPASS_USER_EMAIL", "dev.user@example.com")
     AUTH_DEV_BYPASS_USER_NAME: str = os.getenv("AUTH_DEV_BYPASS_USER_NAME", "PulseLoop Dev User")
     AUTH_DEV_BYPASS_USER_ROLE: str = os.getenv("AUTH_DEV_BYPASS_USER_ROLE", "employee")
+    AUTH_DEV_BYPASS_JOB_ROLE: str = os.getenv("AUTH_DEV_BYPASS_JOB_ROLE", "Software Engineer - Canva")
     AUTH_DEV_BYPASS_TENANT_ID: str = os.getenv("AUTH_DEV_BYPASS_TENANT_ID", "dev-tenant")
     
     class Config:

@@ -2,11 +2,12 @@ import logging
 import os
 import tempfile
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 import azure.cognitiveservices.speech as speechsdk
 from app.core.config import settings
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -15,30 +16,49 @@ class SpeechService:
     def __init__(self) -> None:
         self.speech_key = settings.AZURE_SPEECH_KEY
         self.speech_region = settings.AZURE_SPEECH_REGION
+        self._speech_config: Optional[speechsdk.SpeechConfig] = None
 
-        if not self.speech_key or not self.speech_region:
-            logger.warning("Azure Speech configuration is missing. Transcription will fail until keys are provided.")
+    def _get_speech_config(self) -> speechsdk.SpeechConfig:
+        """Lazily create speech config on first use"""
+        if self._speech_config is None:
+            if not self.speech_key or not self.speech_region:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Azure Speech Services is not configured. Please set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION environment variables."
+                )
+            try:
+                self._speech_config = speechsdk.SpeechConfig(
+                    subscription=self.speech_key,
+                    region=self.speech_region,
+                )
+                # Enable detailed output with word timestamps
+                self._speech_config.output_format = speechsdk.OutputFormat.Detailed
+                try:
+                    self._speech_config.request_word_level_timestamps()
+                except AttributeError:
+                    # request_word_level_timestamps is not available in very old SDK versions
+                    self._speech_config.set_property(
+                        speechsdk.PropertyId.SpeechServiceResponse_RequestWordLevelTimestamps,
+                        "true",
+                    )
 
-        self.speech_config = speechsdk.SpeechConfig(
-            subscription=self.speech_key,
-            region=self.speech_region,
-        )
-        # Enable detailed output with word timestamps
-        self.speech_config.output_format = speechsdk.OutputFormat.Detailed
-        try:
-            self.speech_config.request_word_level_timestamps()
-        except AttributeError:
-            # request_word_level_timestamps is not available in very old SDK versions
-            self.speech_config.set_property(
-                speechsdk.PropertyId.SpeechServiceResponse_RequestWordLevelTimestamps,
-                "true",
-            )
+                # Optimise for long-form dictation scenarios
+                self._speech_config.set_property(
+                    speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs,
+                    "5000",
+                )
+            except Exception as exc:
+                logger.error("Failed to initialize Azure Speech config: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Failed to initialize Azure Speech Services: {exc}"
+                ) from exc
+        return self._speech_config
 
-        # Optimise for long-form dictation scenarios
-        self.speech_config.set_property(
-            speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs,
-            "5000",
-        )
+    @property
+    def speech_config(self) -> speechsdk.SpeechConfig:
+        """Property accessor for lazy config initialization"""
+        return self._get_speech_config()
 
     def transcribe_from_url(self, audio_url: str, language: str = "en-US") -> Dict[str, Any]:
         """
@@ -70,9 +90,10 @@ class SpeechService:
         Transcribe a local audio file and return transcript plus segment timing metadata.
         """
         try:
+            config = self._get_speech_config()
             audio_config = speechsdk.audio.AudioConfig(filename=file_path)
             recognizer = speechsdk.SpeechRecognizer(
-                speech_config=self.speech_config,
+                speech_config=config,
                 audio_config=audio_config,
                 language=language,
             )

@@ -4,6 +4,7 @@ from typing import Optional
 
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from app.core.config import settings
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -12,28 +13,52 @@ class StorageService:
     def __init__(self) -> None:
         self.connection_string = settings.AZURE_STORAGE_CONNECTION_STRING
         self.account_name = settings.AZURE_STORAGE_ACCOUNT_NAME
+        self._blob_service_client: Optional[BlobServiceClient] = None
+        self._containers_ensured = False
 
-        if not self.connection_string:
-            logger.warning("Azure Storage connection string is not configured.")
+    def _get_client(self) -> BlobServiceClient:
+        """Lazily create blob service client on first use"""
+        if self._blob_service_client is None:
+            if not self.connection_string:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Azure Storage is not configured. Please set AZURE_STORAGE_CONNECTION_STRING environment variable."
+                )
+            try:
+                self._blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+                self._ensure_containers()
+            except Exception as exc:
+                logger.error("Failed to initialize Azure Storage client: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Failed to connect to Azure Storage: {exc}"
+                ) from exc
+        return self._blob_service_client
 
-        self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
-        self._ensure_containers()
+    @property
+    def blob_service_client(self) -> BlobServiceClient:
+        """Property accessor for lazy client initialization"""
+        return self._get_client()
 
     def _ensure_containers(self) -> None:
         """Ensure required containers exist"""
+        if self._containers_ensured:
+            return
         containers = [
             settings.STORAGE_CONTAINER_ARTICLES,
             settings.STORAGE_CONTAINER_TRANSCRIPTS,
             settings.STORAGE_CONTAINER_SUMMARIES,
         ]
+        client = self._get_client()
         for container_name in containers:
             try:
-                container_client = self.blob_service_client.get_container_client(container_name)
+                container_client = client.get_container_client(container_name)
                 if not container_client.exists():
                     container_client.create_container()
                     logger.info("Created blob container '%s'", container_name)
             except Exception as exc:
                 logger.error("Error ensuring container %s: %s", container_name, exc)
+        self._containers_ensured = True
 
     def upload_bytes(
         self,
@@ -44,7 +69,8 @@ class StorageService:
     ) -> str:
         """Upload raw bytes to blob storage and return the blob URL"""
         try:
-            blob_client = self.blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+            client = self._get_client()
+            blob_client = client.get_blob_client(container=container_name, blob=blob_name)
             blob_client.upload_blob(
                 data,
                 overwrite=True,
@@ -89,7 +115,8 @@ class StorageService:
     def download_blob(self, container_name: str, blob_name: str) -> bytes:
         """Download blob data"""
         try:
-            blob_client = self.blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+            client = self._get_client()
+            blob_client = client.get_blob_client(container=container_name, blob=blob_name)
             return blob_client.download_blob().readall()
         except Exception as exc:
             logger.error("Error downloading blob %s/%s: %s", container_name, blob_name, exc)
@@ -98,7 +125,8 @@ class StorageService:
     def delete_blob(self, container_name: str, blob_name: str) -> None:
         """Delete a blob"""
         try:
-            blob_client = self.blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+            client = self._get_client()
+            blob_client = client.get_blob_client(container=container_name, blob=blob_name)
             blob_client.delete_blob()
         except Exception as exc:
             logger.error("Error deleting blob %s/%s: %s", container_name, blob_name, exc)

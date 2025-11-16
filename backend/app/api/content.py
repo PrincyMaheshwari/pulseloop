@@ -9,7 +9,10 @@ from app.core.config import settings
 from app.core.database import get_database
 from bson import ObjectId
 import json
+import logging
 from app.utils.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -42,17 +45,44 @@ async def get_animated_summary(content_id: str):
         if not summary:
             raise HTTPException(status_code=400, detail="Content summary not available")
         
-        storyboard = ai_service.generate_storyboard(summary)
+        try:
+            storyboard = ai_service.generate_storyboard(summary)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error generating storyboard: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to generate storyboard. Azure OpenAI may not be configured: {str(e)}"
+            )
         
-        # Generate narration audio
-        audio_bytes = elevenlabs_service.generate_narration_audio(storyboard)
+        try:
+            # Generate narration audio
+            audio_bytes = elevenlabs_service.generate_narration_audio(storyboard)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error generating narration: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to generate narration audio. ElevenLabs may not be configured: {str(e)}"
+            )
         
-        # Upload audio to blob storage
-        audio_url = storage_service.upload_audio(
-            settings.STORAGE_CONTAINER_SUMMARIES,
-            f"summary_{content_id}",
-            audio_bytes,
-        )
+        try:
+            # Upload audio to blob storage
+            audio_url = storage_service.upload_audio(
+                settings.STORAGE_CONTAINER_SUMMARIES,
+                f"summary_{content_id}",
+                audio_bytes,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error uploading audio: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to upload audio. Azure Storage may not be configured: {str(e)}"
+            )
         
         # Save animated summary
         animated_summary = {

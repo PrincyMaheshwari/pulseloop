@@ -33,6 +33,7 @@ class UserService:
         display_name = claims.get("name") or email or "PulseLoop User"
         organization_id = claims.get("tid") or claims.get("tenant_id")
         role = self._resolve_role(claims)
+        job_role = claims.get("jobTitle") or claims.get("job_role") or claims.get("jobRole")
 
         user = self.db.users.find_one({"external_id": external_id})
         now = datetime.utcnow()
@@ -47,6 +48,8 @@ class UserService:
                 updates["organization_id"] = organization_id
             if role and role != user.get("role"):
                 updates["role"] = role
+            if job_role and job_role != user.get("job_role"):
+                updates["job_role"] = job_role
 
             if updates:
                 updates["updated_at"] = now
@@ -60,6 +63,7 @@ class UserService:
             "display_name": display_name,
             "organization_id": organization_id,
             "role": role or settings.AZURE_AD_DEFAULT_ROLE,
+            "job_role": job_role,
             "tech_score": 0,
             "current_streak": 0,
             "longest_streak": 0,
