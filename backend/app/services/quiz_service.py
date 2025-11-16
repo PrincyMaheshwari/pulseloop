@@ -38,7 +38,7 @@ class QuizService:
             transcript_segments = content_item.get("transcript_segments", []) or []
             
             # Generate quiz questions
-            if content_type in ("video", "podcast") and transcript:
+            if content_type == "podcast" and transcript:
                 quiz_source_text = transcript
             else:
                 quiz_source_text = content_item.get("description", "") or summary
@@ -161,7 +161,7 @@ class QuizService:
                 ) or {}
                 if not isinstance(review_hints, dict):
                     review_hints = {"articleHighlights": [], "timestamps": [], "concepts": []}
-                if content_type in ("video", "podcast") and candidate_segments:
+                if content_type == "podcast" and candidate_segments:
                     timestamps = review_hints.get("timestamps") or []
                     if not timestamps:
                         fallback_ranges = []

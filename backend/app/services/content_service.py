@@ -215,12 +215,12 @@ class ContentService:
             return None
     
     def get_daily_feed_options(self, user_id: str) -> dict:
-        """Get daily feed with latest article, video, and podcast options"""
+        """Get daily feed with latest article and podcast options"""
         try:
             # Get user and their role
             user = self.db.users.find_one({"_id": ObjectId(user_id)})
             if not user:
-                return {"article": None, "video": None, "podcast": None}
+                return {"article": None, "podcast": None}
             
             query = self._build_user_content_query(user)
             
@@ -228,13 +228,6 @@ class ContentService:
             article_query = {**query, "type": "article"}
             latest_article = self.db.content_items.find_one(
                 article_query,
-                sort=[("published_at", -1)]
-            )
-            
-            # Get latest video
-            video_query = {**query, "type": "video"}
-            latest_video = self.db.content_items.find_one(
-                video_query,
                 sort=[("published_at", -1)]
             )
             
@@ -247,18 +240,16 @@ class ContentService:
             
             result = {
                 "article": None,
-                "video": None,
                 "podcast": None
             }
             
             result["article"] = self._format_content_item(latest_article)
-            result["video"] = self._format_content_item(latest_video)
             result["podcast"] = self._format_content_item(latest_podcast)
             
             return result
         except Exception as e:
             logger.error(f"Error getting daily feed options: {e}")
-            return {"article": None, "video": None, "podcast": None}
+            return {"article": None, "podcast": None}
 
 # Singleton instance
 content_service = ContentService()

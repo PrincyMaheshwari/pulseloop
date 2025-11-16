@@ -10,7 +10,6 @@ class ContentType(str, Enum):
 
 class SourceType(str, Enum):
     RSS = "rss"
-    YOUTUBE = "youtube"
     PODCAST = "podcast"
     MANUAL = "manual"
 
@@ -19,7 +18,6 @@ class Source(BaseModel):
     name: str
     type: SourceType
     url: Optional[str] = None
-    youtube_channel_id: Optional[str] = None
     role_tags: List[str] = []  # Which roles this source is relevant for
     enabled: bool = True
     created_at: datetime = datetime.utcnow()
@@ -36,7 +34,7 @@ class ContentItem(BaseModel):
     role_tags: List[str] = []  # Which roles this content is relevant for
     tags: List[str] = []  # AI-generated metadata tags
     blob_uri: Optional[str] = None  # Azure Blob Storage URI for raw content/transcript
-    transcript: Optional[str] = None  # For videos/podcasts
+    transcript: Optional[str] = None  # For podcasts
     transcript_segments: Optional[List[Dict]] = None  # Timestamped transcript segments
     transcript_blob_uri: Optional[str] = None  # Blob URI for transcript text
     transcript_segments_blob_uri: Optional[str] = None  # Blob URI for transcript segments JSON

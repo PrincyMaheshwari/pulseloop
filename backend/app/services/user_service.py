@@ -139,7 +139,7 @@ class UserService:
             
             # Get stats by content type
             stats_by_type = {}
-            for content_type in ["article", "video", "podcast"]:
+            for content_type in ["article", "podcast"]:
                 count = self.db.quiz_attempts.count_documents({
                     "user_id": user_id,
                     "passed": True,

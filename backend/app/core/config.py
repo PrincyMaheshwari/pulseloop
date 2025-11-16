@@ -83,9 +83,6 @@ class Settings(BaseSettings):
     # ElevenLabs
     ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
     
-    # YouTube
-    YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
-    
     # Application
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")

@@ -49,7 +49,7 @@ class AIService:
         try:
             trimmed_content = content[:8000] if content else ""
 
-            if content_type in ("video", "podcast"):
+            if content_type == "podcast":
                 prompt = (
                     "You are summarizing an audio/video transcript that teaches industry news. "
                     "Write 2-3 short paragraphs highlighting the most important takeaways, "
@@ -116,7 +116,7 @@ Tags (comma-separated):"""
         try:
             trimmed_content = content[:10000] if content else ""
 
-            if content_type in ("video", "podcast"):
+            if content_type == "podcast":
                 formatted_segments = self._format_segments_for_prompt(transcript_segments)
                 prompt = (
                     "You are creating a quiz for learners who watched or listened to the following transcript excerpts. "
@@ -188,7 +188,7 @@ Tags (comma-separated):"""
     ) -> Dict:
         """Generate review hints (paragraph indices or timestamps) for missed concepts"""
         try:
-            if content_type in ("video", "podcast") and (transcript_segments or candidate_segments):
+            if content_type == "podcast" and (transcript_segments or candidate_segments):
                 formatted_segments = self._format_segments_for_prompt(
                     candidate_segments or transcript_segments,
                     limit=60,
@@ -249,7 +249,7 @@ Tags (comma-separated):"""
         try:
             trimmed_transcript = transcript[:9000] if transcript else ""
 
-            if content_type in ("video", "podcast") and transcript_segments:
+            if content_type == "podcast" and transcript_segments:
                 formatted_segments = self._format_segments_for_prompt(transcript_segments, limit=40, max_chars=180)
                 prompt = (
                     "Generate 5 NEW multiple-choice questions to help the learner revisit the missed concepts in this "

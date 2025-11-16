@@ -12,17 +12,16 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 - Call-to-action to start the learning journey
 
 ### 📊 Learning Dashboard
-- **Personalized Feed**: Role-based content curation showing articles, videos, and podcasts relevant to your job function
+- **Personalized Feed**: Role-based content curation showing articles and podcasts relevant to your job function
 - **Tech Score Tracking**: Real-time display of your learning progress and knowledge score
 - **Streak Monitoring**: Track consecutive days of active learning with current and longest streak metrics
 - **Recent Activity Feed**: View recently consumed content and quiz performance
-- **Content Type Selection**: Choose between articles, YouTube videos, or podcasts for daily learning
+- **Content Type Selection**: Choose between articles or podcasts for daily learning
 - **Quick Access Navigation**: Easy switching between feed, content view, quizzes, and admin dashboard
 - **Progress Indicators**: Visual representation of learning milestones and achievements
 
 ### 📰 Multi-Format Content Consumption
 - **Article Reading**: Full-text articles from curated RSS feeds with AI-generated summaries
-- **Video Watching**: YouTube video integration with transcript analysis and timestamp-based review
 - **Podcast Listening**: Audio content with automated transcript generation and key insight extraction
 - **Content Filtering**: Role-based content filtering ensuring relevance to your industry and job function
 - **Source Management**: Admin-configurable content sources from trusted industry publications
@@ -61,7 +60,7 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 - **Organization Analytics**: Comprehensive metrics on team learning engagement
 - **ROI Metrics**: Track the impact of learning initiatives on organizational goals
 - **Participation Rates**: Monitor user engagement and content consumption patterns
-- **Content Source Management**: Add, configure, and manage RSS feeds, YouTube channels, and podcast sources
+- **Content Source Management**: Add, configure, and manage RSS feeds and podcast sources
 - **User Management**: View individual user progress and learning statistics
 - **Report Generation**: Generate detailed reports on learning outcomes and engagement metrics
 - **Role-Based Content Configuration**: Assign content sources to specific job roles and departments
@@ -112,7 +111,6 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 
 ### 🔄 Content Ingestion Pipeline
 - **Automated RSS Feed Processing**: Scheduled ingestion of articles from configured RSS feeds
-- **YouTube Channel Integration**: Automatic video discovery and transcript extraction
 - **Podcast RSS Support**: Audio content processing with transcript generation
 - **Role-Based Filtering**: Content automatically tagged and filtered by job role relevance
 - **Duplicate Detection**: Prevents duplicate content ingestion
@@ -131,7 +129,6 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
   - Azure Functions (optional, for background jobs)
   - Azure Key Vault (optional, for production)
 - ElevenLabs API key
-- YouTube Data API key (optional, for YouTube content ingestion)
 
 ### Installation
 
@@ -208,8 +205,6 @@ AUTH_DEV_BYPASS_TENANT_ID=dev-tenant
 ENABLE_AZURE_KEY_VAULT=false
 AZURE_KEY_VAULT_URI=<key-vault-uri>
 
-# YouTube Data API (optional, for YouTube content ingestion)
-YOUTUBE_API_KEY=<your-youtube-key>
 
 # Application Configuration
 ENVIRONMENT=development
@@ -277,8 +272,7 @@ python app/scripts/init_db.py
    ```
    
    Ensure you have the required environment variables set in your `.env`:
-   - `YOUTUBE_API_KEY` (for YouTube sources)
-   - `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (for video/podcast transcription)
+   - `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (for podcast transcription)
    - `AZURE_STORAGE_CONNECTION_STRING` (for storing content)
    - `AZURE_DEEPSEEK_ENDPOINT` and `AZURE_DEEPSEEK_KEY` (for AI processing)
    
@@ -428,7 +422,7 @@ pulseloop/
 
 1. **Access Admin**: Navigate to admin dashboard (requires admin privileges)
 2. **View Analytics**: Monitor organization-wide learning metrics
-3. **Manage Sources**: Add RSS feeds, YouTube channels, or podcast sources
+3. **Manage Sources**: Add RSS feeds or podcast sources
 4. **Configure Roles**: Assign content sources to specific job roles
 5. **Generate Reports**: Create detailed reports on learning outcomes
 6. **User Management**: View individual user progress and engagement
@@ -439,11 +433,7 @@ pulseloop/
    - Provide RSS feed URL
    - Assign to relevant job roles
    - Configure update frequency
-2. **Add YouTube Channel**: 
-   - Provide YouTube channel ID
-   - Configure API key
-   - Enable automatic transcript generation
-3. **Add Podcast**: 
+2. **Add Podcast**: 
    - Provide podcast RSS feed URL
    - Enable transcript generation
    - Configure role assignments
