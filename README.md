@@ -21,15 +21,15 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 - **Progress Indicators**: Visual representation of learning milestones and achievements
 
 ### 📰 Multi-Format Content Consumption
-- **Article Reading**: Full-text articles from curated RSS feeds with AI-generated summaries
-- **Podcast Listening**: Audio content with automated transcript generation and key insight extraction
+- **Article Reading**: Full-text articles from curated sources with AI-generated summaries
+- **Podcast Listening**: Audio content with key insight extraction
 - **Content Filtering**: Role-based content filtering ensuring relevance to your industry and job function
 - **Source Management**: Admin-configurable content sources from trusted industry publications
 - **Publishing Date Tracking**: Chronological organization of content with latest-first sorting
 
 ### 🤖 AI-Powered Content Summarization
-- **Intelligent Summaries**: DeepSeek-V3.1 powered summaries that extract key insights from articles, videos, and podcasts
-- **Animated Summaries**: Storyboard-based visual summaries with step-by-step explanations
+- **Intelligent Summaries**: DeepSeek-V3.1 powered summaries that extract key insights from articles and podcasts
+- **Animated Summaries**: Flowchart-style visual summaries with step-by-step explanations
 - **Voice Narration**: ElevenLabs text-to-speech integration for audio summaries
 - **Content Analysis**: Automatic extraction of key concepts, trends, and actionable insights
 - **Tag Generation**: AI-generated tags for content categorization and filtering
@@ -40,7 +40,7 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 - **Smart Retry Logic**: If you get 3+ questions wrong, the system generates a new quiz focusing on missed concepts
 - **Targeted Review Hints**: 
   - For articles: Specific paragraph indices to re-read
-  - For videos/podcasts: Precise timestamp ranges (MM:SS-MM:SS format) to re-watch
+  - For podcasts: Approximate timestamp ranges to re-listen
 - **Concept-Based Learning**: Identifies specific concepts you struggled with and creates targeted retry questions
 - **Explanation Feedback**: Detailed explanations for each correct answer to reinforce learning
 - **Attempt Tracking**: Multiple attempt support with progressive difficulty adjustment
@@ -76,10 +76,6 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
   - Retry quiz creation focused on missed concepts
   - Tag generation and content categorization
   - Priority scoring for role-based relevance
-- **Azure Cognitive Services Speech-to-Text**: 
-  - Automated transcript generation for videos and podcasts
-  - Multi-language support for international content
-  - Real-time speech recognition capabilities
 - **ElevenLabs API**: 
   - High-quality text-to-speech for audio summaries
   - Natural-sounding voice narration
@@ -111,7 +107,7 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 
 ### 🔄 Content Ingestion Pipeline
 - **Automated RSS Feed Processing**: Scheduled ingestion of articles from configured RSS feeds
-- **Podcast RSS Support**: Audio content processing with transcript generation
+- **Podcast RSS Support**: Audio content processing
 - **Role-Based Filtering**: Content automatically tagged and filtered by job role relevance
 - **Duplicate Detection**: Prevents duplicate content ingestion
 - **Source Management**: Admin-configurable content sources with enable/disable functionality
@@ -124,7 +120,6 @@ A comprehensive B2B SaaS platform designed specifically for company employees an
 - MongoDB Atlas account (or local MongoDB instance)
 - Azure account with:
   - Azure AI Foundry project with DeepSeek-V3.1 deployment
-  - Azure Cognitive Services Speech-to-Text
   - Azure Blob Storage account
   - Azure Functions (optional, for background jobs)
   - Azure Key Vault (optional, for production)
@@ -166,10 +161,6 @@ AZURE_DEEPSEEK_ENDPOINT=https://<your-resource>.services.ai.azure.com/
 AZURE_DEEPSEEK_KEY=<YOUR_DEEPSEEK_API_KEY>
 AZURE_DEEPSEEK_MODEL=DeepSeek-V3.1
 OPENAI_API_VERSION=2024-05-01-preview
-
-# Azure Speech Services Configuration
-AZURE_SPEECH_KEY=<your-speech-key>
-AZURE_SPEECH_REGION=eastus
 
 # Azure Storage Configuration
 AZURE_STORAGE_CONNECTION_STRING=<storage-connection-string>
@@ -215,7 +206,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 **Important Notes:**
 
 - **Local Development**: The application runs locally by default. You only need to configure `MONGODB_URI` to get started.
-- **Azure Services**: All Azure services (Storage, OpenAI, Speech, ElevenLabs) are optional and consumed via their SDKs using API keys from `.env`. The app will gracefully report 503 errors if services are not configured, allowing you to test features incrementally.
+- **Azure Services**: All Azure services (Azure AI Foundry / DeepSeek, Azure Blob Storage) and ElevenLabs for text-to-speech are optional and consumed via their SDKs using API keys from `.env`. The app will gracefully report 503 errors if services are not configured, allowing you to test features incrementally.
 - **Authentication**: The app automatically enables `AUTH_DEV_BYPASS=true` if Azure AD configuration is missing, making local development easier.
 - **Key Vault**: Azure Key Vault is disabled by default. Set `ENABLE_AZURE_KEY_VAULT=true` only if you want to load secrets from Key Vault instead of `.env`. For local development, `.env` is recommended.
 
@@ -272,7 +263,6 @@ python app/scripts/init_db.py
    ```
    
    Ensure you have the required environment variables set in your `.env`:
-   - `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (for podcast transcription)
    - `AZURE_STORAGE_CONNECTION_STRING` (for storing content)
    - `AZURE_DEEPSEEK_ENDPOINT` and `AZURE_DEEPSEEK_KEY` (for AI processing)
    
@@ -352,7 +342,7 @@ pulseloop/
 │   │   │   ├── content_service.py # Content management
 │   │   │   ├── elevenlabs_service.py # Text-to-speech
 │   │   │   ├── quiz_service.py # Quiz generation and scoring
-│   │   │   ├── speech_service.py # Speech-to-text
+│   │   │   ├── speech_service.py # Speech-to-text (for podcasts)
 │   │   │   ├── storage_service.py # Blob storage
 │   │   │   └── user_service.py # User management
 │   │   ├── scripts/       # Utility scripts
@@ -389,7 +379,7 @@ pulseloop/
 
 1. **Landing Page**: Review platform features and navigate to dashboard
 2. **Dashboard Overview**: View your current tech score, streak, and personalized content feed
-3. **Content Consumption**: Click on any content item to view full article, video, or podcast
+3. **Content Consumption**: Click on any content item to view full article or podcast episode
 4. **Quiz Taking**: After consuming content, take the AI-generated quiz to test your understanding
 5. **Review and Retry**: If you struggle with the quiz, use review hints to revisit specific sections
 6. **Track Progress**: Monitor your tech score and streak on the dashboard
@@ -397,7 +387,7 @@ pulseloop/
 ### Content Consumption Flow
 
 1. **Browse Feed**: Navigate to dashboard to see your personalized feed
-2. **Select Content**: Choose an article, video, or podcast that interests you
+2. **Select Content**: Choose an article or podcast episode that interests you
 3. **Read/Watch/Listen**: Consume the full content or view the AI-generated summary
 4. **Take Quiz**: Complete the 5-question quiz to test your understanding
 5. **Review Results**: 
@@ -413,8 +403,8 @@ pulseloop/
    - Correct answers earn points toward tech score
    - Wrong answers trigger review hint generation
 4. **Review Hints**: 
-   - Articles: Paragraph indices to re-read
-   - Videos/Podcasts: Timestamp ranges to re-watch
+  - Articles: Paragraph indices to re-read
+  - Podcasts: Approximate timestamp ranges to re-listen
 5. **Retry Quiz**: New quiz focusing on concepts you missed
 6. **Final Score**: Points awarded based on attempt number and performance
 
@@ -435,7 +425,6 @@ pulseloop/
    - Configure update frequency
 2. **Add Podcast**: 
    - Provide podcast RSS feed URL
-   - Enable transcript generation
    - Configure role assignments
 
 ## API Endpoints
@@ -443,7 +432,7 @@ pulseloop/
 ### Content Feed
 - `GET /api/feed` - Get personalized feed for user's role
 - `GET /api/feed/today` - Get today's top content for streak
-- `GET /api/feed/daily-options` - Get latest article, video, and podcast options
+- `GET /api/feed/daily-options` - Get latest article and podcast options
 
 ### Content Management
 - `GET /api/content/{id}` - Get specific content item
@@ -520,7 +509,7 @@ Both services will start and communicate via the configured `NEXT_PUBLIC_API_BAS
 
 ### Azure Services (Optional)
 
-The application can connect to Azure services (OpenAI, Speech, Storage, ElevenLabs) using API keys from your `.env` file. These services are:
+The application can connect to Azure services (Azure AI Foundry / DeepSeek, Azure Blob Storage) and ElevenLabs for text-to-speech using API keys from your `.env` file. These services are:
 - **Optional**: The app gracefully handles missing configurations
 - **Consumed via SDKs**: No Azure infrastructure deployment required
 - **Configurable**: Set API keys in `.env` to enable specific features
